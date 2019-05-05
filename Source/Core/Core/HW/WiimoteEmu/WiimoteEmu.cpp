@@ -380,6 +380,12 @@ void Wiimote::SendDataReport()
 {
   Movie::SetPolledDevice();
 
+  if (m_reporting_hijacked)
+  {
+    // someone else (DolphinWatch) has taken control for now
+    return;
+  }
+
   if (InputReportID::ReportDisabled == m_reporting_mode)
   {
     // The wiimote is in this disabled after an extension change.
@@ -588,8 +594,8 @@ bool Wiimote::CheckForButtonPress()
   return (buttons != 0 || GetActiveExtension()->IsButtonPressed());
 }
 
-void Wiimote::SetReportingAuto(bool b) {
-  m_reporting_continuous = b;
+void Wiimote::SetReportingHijacked(bool b) {
+  m_reporting_hijacked = b;
 }
 
 u16 Wiimote::GetReportingChannel() {

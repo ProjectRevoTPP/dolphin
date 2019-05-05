@@ -124,7 +124,7 @@ public:
   bool CheckForButtonPress();
   void Reset();
 
-  void SetReportingAuto(bool b);
+  void SetReportingHijacked(bool b);
   u16 GetReportingChannel();
 
   void DoState(PointerWrap& p);
@@ -267,6 +267,7 @@ private:
   u16 m_reporting_channel;
   WiimoteCommon::InputReportID m_reporting_mode;
   bool m_reporting_continuous;
+  bool m_reporting_hijacked;
 
   bool m_speaker_mute;
 

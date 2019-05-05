@@ -55,7 +55,7 @@ namespace DolphinWatch {
 		WiimoteEmu::Wiimote* wiimote = GetWiimote(i_wiimote);
 
 		// disable reports from actual wiimote for a while, aka hijack for a while
-		wiimote->SetReportingAuto(false);
+    wiimote->SetReportingHijacked(true);
 		hijacksWii[i_wiimote] = HIJACK_TIMEOUT;
 
 		u8 data[23];
@@ -84,6 +84,7 @@ namespace DolphinWatch {
 		memcpy(data + 7, stuff, 16);
 
 		std::stringstream ss;
+    ss.imbue(locale);
 		ss << "Sending wii buttons. wiimote: " << i_wiimote << ", buttons: 0x" << std::hex << _buttons;
 		ss << ", IR: 0x" << std::hex;
 		for (int i = 0; i < 10; i++) {
@@ -137,7 +138,7 @@ namespace DolphinWatch {
 			hijacksWii[i] -= WATCH_TIMEOUT;
 			if (hijacksWii[i] <= 0) {
 				hijacksWii[i] = 0;
-				GetWiimote(i)->SetReportingAuto(true);
+				GetWiimote(i)->SetReportingHijacked(false);
 			}
 		}
 		for (int i = 0; i < NUM_GCPADS; ++i) {
@@ -227,6 +228,7 @@ namespace DolphinWatch {
 	void Process(Client& client, std::string& line) {
 		// turn line into another stream
 		std::istringstream parts(line);
+    parts.imbue(locale);
 		std::string cmd;
 
 		DEBUG_LOG(DOLPHINWATCH, "Processing: %s", line.c_str());
@@ -653,6 +655,7 @@ namespace DolphinWatch {
         // TODO not guaranteed in the same emulation frame, since we don't pause the emulation and it's concurrent
 				std::string s2;
 				std::istringstream subcmds(s);
+        subcmds.imbue(locale);
 				while (getline(subcmds, s2, ';')) {
                   if (!s2.empty()) Process(client, s2);
 				}
