@@ -18,6 +18,7 @@ import org.dolphinemu.dolphinemu.features.settings.model.view.InputBindingSettin
 import org.dolphinemu.dolphinemu.features.settings.model.view.RumbleBindingSetting;
 import org.dolphinemu.dolphinemu.features.settings.model.view.SettingsItem;
 import org.dolphinemu.dolphinemu.features.settings.model.view.SingleChoiceSetting;
+import org.dolphinemu.dolphinemu.features.settings.model.view.SingleChoiceSettingDynamicDescriptions;
 import org.dolphinemu.dolphinemu.features.settings.model.view.SliderSetting;
 import org.dolphinemu.dolphinemu.features.settings.model.view.StringSingleChoiceSetting;
 import org.dolphinemu.dolphinemu.features.settings.model.view.SubmenuSetting;
@@ -69,8 +70,9 @@ public final class SettingsFragmentPresenter
     }
   }
 
-  public void onViewCreated(Settings settings)
+  public void onViewCreated(MenuTag menuTag, Settings settings)
   {
+    this.mMenuTag = menuTag;
     setSettings(settings);
   }
 
@@ -218,6 +220,7 @@ public final class SettingsFragmentPresenter
     Setting overclock = null;
     Setting speedLimit = null;
     Setting audioStretch = null;
+    Setting overrideRegionSettings = null;
     Setting autoDiscChange = null;
     Setting analytics = null;
     Setting enableSaveState;
@@ -231,6 +234,7 @@ public final class SettingsFragmentPresenter
     overclock = coreSection.getSetting(SettingsFile.KEY_OVERCLOCK_PERCENT);
     speedLimit = coreSection.getSetting(SettingsFile.KEY_SPEED_LIMIT);
     audioStretch = coreSection.getSetting(SettingsFile.KEY_AUDIO_STRETCH);
+    overrideRegionSettings = coreSection.getSetting(SettingsFile.KEY_OVERRIDE_REGION_SETTINGS);
     autoDiscChange = coreSection.getSetting(SettingsFile.KEY_AUTO_DISC_CHANGE);
     analytics = analyticsSection.getSetting(SettingsFile.KEY_ANALYTICS_ENABLED);
     enableSaveState = coreSection.getSetting(SettingsFile.KEY_ENABLE_SAVE_STATES);
@@ -271,6 +275,9 @@ public final class SettingsFragmentPresenter
             R.string.speed_limit, 0, 200, "%", 100, speedLimit));
     sl.add(new CheckBoxSetting(SettingsFile.KEY_AUDIO_STRETCH, Settings.SECTION_INI_CORE,
             R.string.audio_stretch, R.string.audio_stretch_description, false, audioStretch));
+    sl.add(new CheckBoxSetting(SettingsFile.KEY_OVERRIDE_REGION_SETTINGS,
+            Settings.SECTION_INI_CORE, R.string.override_region_settings, 0, false,
+            overrideRegionSettings));
     sl.add(new CheckBoxSetting(SettingsFile.KEY_AUTO_DISC_CHANGE, Settings.SECTION_INI_CORE,
             R.string.auto_disc_change, 0, false, autoDiscChange));
     sl.add(new CheckBoxSetting(SettingsFile.KEY_ENABLE_SAVE_STATES, Settings.SECTION_INI_CORE,
@@ -306,22 +313,17 @@ public final class SettingsFragmentPresenter
   private void addGameCubeSettings(ArrayList<SettingsItem> sl)
   {
     Setting systemLanguage = null;
-    Setting overrideGCLanguage = null;
     Setting slotADevice = null;
     Setting slotBDevice = null;
 
     SettingSection coreSection = mSettings.getSection(Settings.SECTION_INI_CORE);
     systemLanguage = coreSection.getSetting(SettingsFile.KEY_GAME_CUBE_LANGUAGE);
-    overrideGCLanguage = coreSection.getSetting(SettingsFile.KEY_OVERRIDE_GAME_CUBE_LANGUAGE);
     slotADevice = coreSection.getSetting(SettingsFile.KEY_SLOT_A_DEVICE);
     slotBDevice = coreSection.getSetting(SettingsFile.KEY_SLOT_B_DEVICE);
 
     sl.add(new SingleChoiceSetting(SettingsFile.KEY_GAME_CUBE_LANGUAGE, Settings.SECTION_INI_CORE,
             R.string.gamecube_system_language, 0, R.array.gameCubeSystemLanguageEntries,
             R.array.gameCubeSystemLanguageValues, 0, systemLanguage));
-    sl.add(new CheckBoxSetting(SettingsFile.KEY_OVERRIDE_GAME_CUBE_LANGUAGE,
-            Settings.SECTION_INI_CORE, R.string.override_gamecube_language, 0, false,
-            overrideGCLanguage));
     sl.add(new SingleChoiceSetting(SettingsFile.KEY_SLOT_A_DEVICE, Settings.SECTION_INI_CORE,
             R.string.slot_a_device, 0, R.array.slotDeviceEntries, R.array.slotDeviceValues, 8,
             slotADevice));
@@ -417,15 +419,16 @@ public final class SettingsFragmentPresenter
             R.array.videoBackendValues, 0, videoBackend));
     sl.add(new CheckBoxSetting(SettingsFile.KEY_SHOW_FPS, Settings.SECTION_GFX_SETTINGS,
             R.string.show_fps, R.string.show_fps_description, false, showFps));
-    sl.add(new SingleChoiceSetting(SettingsFile.KEY_SHADER_COMPILATION_MODE,
-            Settings.SECTION_GFX_SETTINGS, R.string.shader_compilation_mode,
-            R.string.shader_compilation_mode_description, R.array.shaderCompilationModeEntries,
-            R.array.shaderCompilationModeValues, 0, shaderCompilationMode));
+    sl.add(new SingleChoiceSettingDynamicDescriptions(SettingsFile.KEY_SHADER_COMPILATION_MODE,
+            Settings.SECTION_GFX_SETTINGS, R.string.shader_compilation_mode, 0,
+            R.array.shaderCompilationModeEntries,
+            R.array.shaderCompilationModeValues, R.array.shaderCompilationDescriptionEntries,
+            R.array.shaderCompilationDescriptionValues, 0, shaderCompilationMode));
     sl.add(new CheckBoxSetting(SettingsFile.KEY_WAIT_FOR_SHADERS, Settings.SECTION_GFX_SETTINGS,
             R.string.wait_for_shaders, R.string.wait_for_shaders_description, false,
             waitForShaders));
     sl.add(new SingleChoiceSetting(SettingsFile.KEY_ASPECT_RATIO, Settings.SECTION_GFX_SETTINGS,
-            R.string.aspect_ratio, R.string.aspect_ratio_description, R.array.aspectRatioEntries,
+            R.string.aspect_ratio, 0, R.array.aspectRatioEntries,
             R.array.aspectRatioValues, 0, aspectRatio));
 
     sl.add(new HeaderSetting(null, null, R.string.graphics_enhancements_and_hacks, 0));
@@ -681,7 +684,7 @@ public final class SettingsFragmentPresenter
     Setting swapEyes = stereoScopySection.getSetting(SettingsFile.KEY_STEREO_SWAP);
 
     sl.add(new SingleChoiceSetting(SettingsFile.KEY_STEREO_MODE, Settings.SECTION_STEREOSCOPY,
-            R.string.stereoscopy_mode, R.string.stereoscopy_mode_description,
+            R.string.stereoscopy_mode, 0,
             R.array.stereoscopyEntries, R.array.stereoscopyValues, 0, stereoModeValue));
     sl.add(new SliderSetting(SettingsFile.KEY_STEREO_DEPTH, Settings.SECTION_STEREOSCOPY,
             R.string.stereoscopy_depth, R.string.stereoscopy_depth_description, 100, "%", 20,

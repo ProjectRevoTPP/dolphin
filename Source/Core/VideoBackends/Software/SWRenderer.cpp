@@ -9,7 +9,6 @@
 #include "Common/CommonTypes.h"
 #include "Common/GL/GLContext.h"
 
-#include "Core/Config/GraphicsSettings.h"
 #include "Core/HW/Memmap.h"
 
 #include "VideoBackends/Software/EfbCopy.h"
@@ -22,9 +21,8 @@
 #include "VideoCommon/AbstractTexture.h"
 #include "VideoCommon/BoundingBox.h"
 #include "VideoCommon/NativeVertexFormat.h"
-#include "VideoCommon/OnScreenDisplay.h"
 #include "VideoCommon/VideoBackendBase.h"
-#include "VideoCommon/VideoConfig.h"
+#include "VideoCommon/VideoCommon.h"
 
 namespace SW
 {
@@ -68,7 +66,7 @@ public:
 };
 
 std::unique_ptr<AbstractShader>
-SWRenderer::CreateShaderFromSource(ShaderStage stage, const char* source, size_t length)
+SWRenderer::CreateShaderFromSource(ShaderStage stage, [[maybe_unused]] std::string_view source)
 {
   return std::make_unique<SWShader>(stage);
 }
@@ -82,7 +80,7 @@ std::unique_ptr<AbstractShader> SWRenderer::CreateShaderFromBinary(ShaderStage s
 class SWPipeline final : public AbstractPipeline
 {
 public:
-  SWPipeline() : AbstractPipeline() {}
+  SWPipeline() = default;
   ~SWPipeline() override = default;
 };
 
@@ -94,11 +92,12 @@ std::unique_ptr<AbstractPipeline> SWRenderer::CreatePipeline(const AbstractPipel
 }
 
 // Called on the GPU thread
-void SWRenderer::RenderXFBToScreen(const AbstractTexture* texture,
-                                   const MathUtil::Rectangle<int>& xfb_region)
+void SWRenderer::RenderXFBToScreen(const MathUtil::Rectangle<int>& target_rc,
+                                   const AbstractTexture* source_texture,
+                                   const MathUtil::Rectangle<int>& source_rc)
 {
   if (!IsHeadless())
-    m_window->ShowImage(texture, xfb_region);
+    m_window->ShowImage(source_texture, source_rc);
 }
 
 u32 SWRenderer::AccessEFB(EFBAccessType type, u32 x, u32 y, u32 InputData)

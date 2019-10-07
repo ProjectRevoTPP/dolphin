@@ -13,9 +13,7 @@
 #include "Common/Logging/Log.h"
 #include "Common/StringUtil.h"
 
-namespace ciface
-{
-namespace OSX
+namespace ciface::OSX
 {
 void Joystick::AddElements(CFArrayRef elements, std::set<IOHIDElementCookie>& cookies)
 {
@@ -166,7 +164,7 @@ std::string Joystick::Button::GetName() const
 {
   std::ostringstream s;
   s << IOHIDElementGetUsage(m_element);
-  return std::string("Button ") + StripSpaces(s.str());
+  return std::string("Button ").append(StripSpaces(s.str()));
 }
 
 Joystick::Axis::Axis(IOHIDElementRef element, IOHIDDeviceRef device, direction dir)
@@ -341,5 +339,4 @@ bool Joystick::IsSameDevice(const IOHIDDeviceRef other_device) const
 {
   return m_device == other_device;
 }
-}
-}
+}  // namespace ciface::OSX

@@ -10,6 +10,8 @@
 #include <QString>
 #include <QWidget>
 
+constexpr int WIDGET_MAX_WIDTH = 112;
+
 class ControlGroupBox;
 class InputConfig;
 class IOWindow;
@@ -25,13 +27,10 @@ class ControlGroup;
 class EmulatedController;
 }  // namespace ControllerEmu
 
-namespace ciface
-{
-namespace Core
+namespace ciface::Core
 {
 class Device;
-}
-}  // namespace ciface
+}  // namespace ciface::Core
 
 constexpr int INDICATOR_UPDATE_FREQ = 30;
 
@@ -55,6 +54,8 @@ signals:
 
 protected:
   int GetPort() const;
+
+  QGroupBox* CreateGroupBox(ControllerEmu::ControlGroup* group);
   QGroupBox* CreateGroupBox(const QString& name, ControllerEmu::ControlGroup* group);
 
 private:

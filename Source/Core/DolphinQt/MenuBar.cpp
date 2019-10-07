@@ -110,8 +110,12 @@ void MenuBar::OnEmulationStateChanged(Core::State state)
   // Movie
   m_recording_read_only->setEnabled(running);
   if (!running)
+  {
     m_recording_stop->setEnabled(false);
-  m_recording_play->setEnabled(!running);
+    m_recording_export->setEnabled(false);
+  }
+  m_recording_play->setEnabled(m_game_selected && !running);
+  m_recording_start->setEnabled((m_game_selected || running) && !Movie::IsPlayingInput());
 
   // Options
   m_controllers_action->setEnabled(NetPlay::IsNetPlayRunning() ? !running : true);
@@ -189,7 +193,7 @@ void MenuBar::AddFileMenu()
 {
   QMenu* file_menu = addMenu(tr("&File"));
   m_open_action = file_menu->addAction(tr("&Open..."), this, &MenuBar::Open,
-                                       QKeySequence(QStringLiteral("Ctrl+O")));
+                                       QKeySequence(Qt::CTRL + Qt::Key_O));
 
   file_menu->addSeparator();
 
@@ -200,37 +204,33 @@ void MenuBar::AddFileMenu()
 
   file_menu->addSeparator();
 
-  m_exit_action = file_menu->addAction(tr("E&xit"), this, &MenuBar::Exit,
-                                       QKeySequence(QStringLiteral("Alt+F4")));
+  m_exit_action =
+      file_menu->addAction(tr("E&xit"), this, &MenuBar::Exit, QKeySequence(Qt::ALT + Qt::Key_F4));
 }
 
 void MenuBar::AddToolsMenu()
 {
   QMenu* tools_menu = addMenu(tr("&Tools"));
 
-  tools_menu->addAction(tr("&Memory Card Manager (GC)"), this,
-                        [this] { emit ShowMemcardManager(); });
+  tools_menu->addAction(tr("&Resource Pack Manager"), this,
+                        [this] { emit ShowResourcePackManager(); });
 
   m_show_cheat_manager =
       tools_menu->addAction(tr("&Cheats Manager"), this, [this] { emit ShowCheatsManager(); });
-
-  tools_menu->addAction(tr("&Resource Pack Manager"), this,
-                        [this] { emit ShowResourcePackManager(); });
 
   connect(&Settings::Instance(), &Settings::EnableCheatsChanged, [this](bool enabled) {
     m_show_cheat_manager->setEnabled(Core::GetState() != Core::State::Uninitialized && enabled);
   });
 
-  tools_menu->addSeparator();
-
-  tools_menu->addAction(tr("Import Wii Save..."), this, &MenuBar::ImportWiiSave);
-  tools_menu->addAction(tr("Export All Wii Saves"), this, &MenuBar::ExportWiiSaves);
+  tools_menu->addAction(tr("FIFO Player"), this, &MenuBar::ShowFIFOPlayer);
 
   tools_menu->addSeparator();
 
-  m_wad_install_action = tools_menu->addAction(tr("Install WAD..."), this, &MenuBar::InstallWAD);
+  tools_menu->addAction(tr("Start &NetPlay..."), this, &MenuBar::StartNetPlay);
+  tools_menu->addAction(tr("Browse &NetPlay Sessions...."), this, &MenuBar::BrowseNetPlay);
 
   tools_menu->addSeparator();
+
   QMenu* gc_ipl = tools_menu->addMenu(tr("Load GameCube Main Menu"));
 
   m_ntscj_ipl = gc_ipl->addAction(tr("NTSC-J"), this,
@@ -240,20 +240,19 @@ void MenuBar::AddToolsMenu()
   m_pal_ipl =
       gc_ipl->addAction(tr("PAL"), this, [this] { emit BootGameCubeIPL(DiscIO::Region::PAL); });
 
-  tools_menu->addAction(tr("Start &NetPlay..."), this, &MenuBar::StartNetPlay);
-  tools_menu->addAction(tr("Browse &NetPlay Sessions...."), this, &MenuBar::BrowseNetPlay);
-  tools_menu->addAction(tr("FIFO Player"), this, &MenuBar::ShowFIFOPlayer);
+  tools_menu->addAction(tr("Memory Card Manager"), this, [this] { emit ShowMemcardManager(); });
 
   tools_menu->addSeparator();
 
   // Label will be set by a NANDRefresh later
-  m_boot_sysmenu =
-      tools_menu->addAction(QStringLiteral(""), this, [this] { emit BootWiiSystemMenu(); });
-  m_import_backup = tools_menu->addAction(tr("Import BootMii NAND Backup..."), this,
-                                          [this] { emit ImportNANDBackup(); });
-  m_check_nand = tools_menu->addAction(tr("Check NAND..."), this, &MenuBar::CheckNAND);
-  m_extract_certificates = tools_menu->addAction(tr("Extract Certificates from NAND"), this,
-                                                 &MenuBar::NANDExtractCertificates);
+  m_boot_sysmenu = tools_menu->addAction(QString{}, this, [this] { emit BootWiiSystemMenu(); });
+  m_wad_install_action = tools_menu->addAction(tr("Install WAD..."), this, &MenuBar::InstallWAD);
+  m_manage_nand_menu = tools_menu->addMenu(tr("Manage NAND"));
+  m_import_backup = m_manage_nand_menu->addAction(tr("Import BootMii NAND Backup..."), this,
+                                                  [this] { emit ImportNANDBackup(); });
+  m_check_nand = m_manage_nand_menu->addAction(tr("Check NAND..."), this, &MenuBar::CheckNAND);
+  m_extract_certificates = m_manage_nand_menu->addAction(tr("Extract Certificates from NAND"), this,
+                                                         &MenuBar::NANDExtractCertificates);
 
   m_boot_sysmenu->setEnabled(false);
 
@@ -271,6 +270,11 @@ void MenuBar::AddToolsMenu()
                                           [this] { emit PerformOnlineUpdate("KOR"); });
   m_perform_online_update_menu->addAction(tr("United States"), this,
                                           [this] { emit PerformOnlineUpdate("USA"); });
+
+  tools_menu->addSeparator();
+
+  tools_menu->addAction(tr("Import Wii Save..."), this, &MenuBar::ImportWiiSave);
+  tools_menu->addAction(tr("Export All Wii Saves"), this, &MenuBar::ExportWiiSaves);
 
   QMenu* menu = new QMenu(tr("Connect Wii Remotes"), tools_menu);
 
@@ -309,6 +313,9 @@ void MenuBar::AddEmulationMenu()
   AddStateSaveMenu(emu_menu);
   AddStateSlotMenu(emu_menu);
   UpdateStateSlotMenu();
+
+  for (QMenu* menu : {m_state_load_menu, m_state_save_menu, m_state_slot_menu})
+    connect(menu, &QMenu::aboutToShow, this, &MenuBar::UpdateStateSlotMenu);
 }
 
 void MenuBar::AddStateLoadMenu(QMenu* emu_menu)
@@ -321,7 +328,7 @@ void MenuBar::AddStateLoadMenu(QMenu* emu_menu)
 
   for (int i = 1; i <= 10; i++)
   {
-    QAction* action = m_state_load_slots_menu->addAction(QStringLiteral(""));
+    QAction* action = m_state_load_slots_menu->addAction(QString{});
 
     connect(action, &QAction::triggered, this, [=]() { emit StateLoadSlotAt(i); });
   }
@@ -338,7 +345,7 @@ void MenuBar::AddStateSaveMenu(QMenu* emu_menu)
 
   for (int i = 1; i <= 10; i++)
   {
-    QAction* action = m_state_save_slots_menu->addAction(QStringLiteral(""));
+    QAction* action = m_state_save_slots_menu->addAction(QString{});
 
     connect(action, &QAction::triggered, this, [=]() { emit StateSaveSlotAt(i); });
   }
@@ -351,7 +358,7 @@ void MenuBar::AddStateSlotMenu(QMenu* emu_menu)
 
   for (int i = 1; i <= 10; i++)
   {
-    QAction* action = m_state_slot_menu->addAction(QStringLiteral(""));
+    QAction* action = m_state_slot_menu->addAction(QString{});
     action->setCheckable(true);
     action->setActionGroup(m_state_slots);
     if (Settings::Instance().GetStateSlot() == i)
@@ -475,7 +482,7 @@ void MenuBar::AddViewMenu()
   view_menu->addAction(tr("Purge Game List Cache"), this, &MenuBar::PurgeGameListCache);
   view_menu->addSeparator();
   view_menu->addAction(tr("Search"), this, &MenuBar::ShowSearch,
-                       QKeySequence(QStringLiteral("Ctrl+F")));
+                       QKeySequence(Qt::CTRL + Qt::Key_F));
 }
 
 void MenuBar::AddOptionsMenu()
@@ -542,6 +549,11 @@ void MenuBar::AddHelpMenu()
   QAction* github = help_menu->addAction(tr("&GitHub Repository"));
   connect(github, &QAction::triggered, this, []() {
     QDesktopServices::openUrl(QUrl(QStringLiteral("https://github.com/dolphin-emu/dolphin")));
+  });
+  QAction* bugtracker = help_menu->addAction(tr("&Bug Tracker"));
+  connect(bugtracker, &QAction::triggered, this, []() {
+    QDesktopServices::openUrl(
+        QUrl(QStringLiteral("https://bugs.dolphin-emu.org/projects/emulator")));
   });
 
   if (AutoUpdateChecker::SystemSupportsAutoUpdates())
@@ -935,7 +947,7 @@ void MenuBar::UpdateToolsMenu(bool emulation_started)
     const QString sysmenu_version =
         tmd.IsValid() ?
             QString::fromStdString(DiscIO::GetSysMenuVersionString(tmd.GetTitleVersion())) :
-            QStringLiteral("");
+            QString{};
     m_boot_sysmenu->setText(tr("Load Wii System Menu %1").arg(sysmenu_version));
 
     m_boot_sysmenu->setEnabled(tmd.IsValid());
@@ -1098,16 +1110,17 @@ void MenuBar::NANDExtractCertificates()
 
 void MenuBar::OnSelectionChanged(std::shared_ptr<const UICommon::GameFile> game_file)
 {
-  const bool game_selected = !!game_file;
+  m_game_selected = !!game_file;
 
-  m_recording_play->setEnabled(game_selected && !Core::IsRunning());
-  m_recording_start->setEnabled(game_selected && !Movie::IsPlayingInput());
+  m_recording_play->setEnabled(m_game_selected && !Core::IsRunning());
+  m_recording_start->setEnabled((m_game_selected || Core::IsRunning()) && !Movie::IsPlayingInput());
 }
 
 void MenuBar::OnRecordingStatusChanged(bool recording)
 {
-  m_recording_start->setEnabled(!recording);
+  m_recording_start->setEnabled(!recording && (m_game_selected || Core::IsRunning()));
   m_recording_stop->setEnabled(recording);
+  m_recording_export->setEnabled(recording);
 }
 
 void MenuBar::OnReadOnlyModeChanged(bool read_only)
@@ -1433,8 +1446,8 @@ void MenuBar::LogInstructions()
 void MenuBar::SearchInstruction()
 {
   bool good;
-  QString op = QInputDialog::getText(this, tr("Search instruction"), tr("Instruction:"),
-                                     QLineEdit::Normal, QStringLiteral(""), &good);
+  const QString op = QInputDialog::getText(this, tr("Search instruction"), tr("Instruction:"),
+                                           QLineEdit::Normal, QString{}, &good);
 
   if (!good)
     return;

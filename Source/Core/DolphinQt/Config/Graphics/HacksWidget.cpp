@@ -100,10 +100,13 @@ void HacksWidget::CreateWidgets()
   m_disable_bounding_box =
       new GraphicsBool(tr("Disable Bounding Box"), Config::GFX_HACK_BBOX_ENABLE, true);
   m_vertex_rounding = new GraphicsBool(tr("Vertex Rounding"), Config::GFX_HACK_VERTEX_ROUDING);
+  m_save_texture_cache_state =
+      new GraphicsBool(tr("Save Texture Cache to State"), Config::GFX_SAVE_TEXTURE_CACHE_TO_STATE);
 
   other_layout->addWidget(m_fast_depth_calculation, 0, 0);
   other_layout->addWidget(m_disable_bounding_box, 0, 1);
   other_layout->addWidget(m_vertex_rounding, 1, 0);
+  other_layout->addWidget(m_save_texture_cache_state, 1, 1);
 
   main_layout->addWidget(efb_box);
   main_layout->addWidget(texture_cache_box);
@@ -126,8 +129,8 @@ void HacksWidget::OnBackendChanged(const QString& backend_name)
 
   const QString tooltip = tr("%1 doesn't support this feature on your system.").arg(backend_name);
 
-  m_gpu_texture_decoding->setToolTip(!gpu_texture_decoding ? tooltip : QStringLiteral(""));
-  m_disable_bounding_box->setToolTip(!bbox ? tooltip : QStringLiteral(""));
+  m_gpu_texture_decoding->setToolTip(!gpu_texture_decoding ? tooltip : QString{});
+  m_disable_bounding_box->setToolTip(!bbox ? tooltip : QString{});
 }
 
 void HacksWidget::ConnectWidgets()
@@ -212,11 +215,11 @@ void HacksWidget::AddDescriptions()
       "RAM (and Texture)\n\nIf unsure, leave this checked.");
   static const char TR_DEFER_EFB_COPIES_DESCRIPTION[] = QT_TR_NOOP(
       "Waits until the game synchronizes with the emulated GPU before writing the contents of EFB "
-      "copies to RAM. Reduces the overhead of EFB RAM copies, providing a performance boost in "
+      "copies to RAM.\n\nReduces the overhead of EFB RAM copies, providing a performance boost in "
       "many games, at the risk of breaking those which do not safely synchronize with the "
       "emulated GPU.\n\nIf unsure, leave this checked.");
   static const char TR_ACCUARCY_DESCRIPTION[] = QT_TR_NOOP(
-      "Adjusts the accuracy at which the GPU receives texture updates from RAM.\n\n "
+      "Adjusts the accuracy at which the GPU receives texture updates from RAM.\n\n"
       "The \"Safe\" setting eliminates the likelihood of the GPU missing texture updates "
       "from RAM. Lower accuracies cause in-game text to appear garbled in certain "
       "games.\n\nIf unsure, select the rightmost value.");
@@ -228,13 +231,12 @@ void HacksWidget::AddDescriptions()
 
   static const char TR_IMMEDIATE_XFB_DESCRIPTION[] =
       QT_TR_NOOP("Displays XFB copies as soon as they are created, instead of waiting for "
-                 "scanout. Can cause graphical defects "
-                 "in some games if the game doesn't expect all XFB copies to be displayed. "
-                 "However, turning this setting on reduces latency."
-                 "\n\nIf unsure, leave this unchecked.");
+                 "scanout.\n\nCan cause graphical defects in some games if the game doesn't "
+                 "expect all XFB copies to be displayed. However, turning this setting on reduces "
+                 "latency.\n\nIf unsure, leave this unchecked.");
 
   static const char TR_GPU_DECODING_DESCRIPTION[] =
-      QT_TR_NOOP("Enables texture decoding using the GPU instead of the CPU. This may result in "
+      QT_TR_NOOP("Enables texture decoding using the GPU instead of the CPU.\n\nThis may result in "
                  "performance gains in some scenarios, or on systems where the CPU is the "
                  "bottleneck.\n\nIf unsure, leave this unchecked.");
 
@@ -245,6 +247,10 @@ void HacksWidget::AddDescriptions()
   static const char TR_DISABLE_BOUNDINGBOX_DESCRIPTION[] =
       QT_TR_NOOP("Disables bounding box emulation.\n\nThis may improve GPU performance "
                  "significantly, but some games will break.\n\nIf unsure, leave this checked.");
+  static const char TR_SAVE_TEXTURE_CACHE_TO_STATE_DESCRIPTION[] = QT_TR_NOOP(
+      "Includes the contents of the embedded frame buffer (EFB) and upscaled EFB copies "
+      "in save states. Fixes missing and/or non-upscaled textures/objects when loading "
+      "states at the cost of additional save/load time.\n\nIf unsure, leave this checked.");
   static const char TR_VERTEX_ROUNDING_DESCRIPTION[] =
       QT_TR_NOOP("Rounds 2D vertices to whole pixels.\n\nFixes graphical problems in some games at "
                  "higher internal resolutions. This setting has no effect when native internal "
@@ -260,6 +266,7 @@ void HacksWidget::AddDescriptions()
   AddDescription(m_gpu_texture_decoding, TR_GPU_DECODING_DESCRIPTION);
   AddDescription(m_fast_depth_calculation, TR_FAST_DEPTH_CALC_DESCRIPTION);
   AddDescription(m_disable_bounding_box, TR_DISABLE_BOUNDINGBOX_DESCRIPTION);
+  AddDescription(m_save_texture_cache_state, TR_SAVE_TEXTURE_CACHE_TO_STATE_DESCRIPTION);
   AddDescription(m_vertex_rounding, TR_VERTEX_ROUNDING_DESCRIPTION);
 }
 

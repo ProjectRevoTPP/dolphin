@@ -338,9 +338,6 @@ void VertexManagerBase::Flush()
 
   m_is_flushed = true;
 
-  // loading a state will invalidate BP, so check for it
-  g_video_backend->CheckInvalidState();
-
 #if defined(_DEBUG) || defined(DEBUGFAST)
   PRIM_LOG("frame%d:\n texgen=%u, numchan=%u, dualtex=%u, ztex=%u, cole=%u, alpe=%u, ze=%u",
            g_ActiveConfig.iSaveTargetId, xfmem.numTexGen.numTexGens, xfmem.numChan.numColorChans,
@@ -384,15 +381,15 @@ void VertexManagerBase::Flush()
   // Track some stats used elsewhere by the anamorphic widescreen heuristic.
   if (!SConfig::GetInstance().bWii)
   {
-    float* rawProjection = xfmem.projection.rawProjection;
-    bool viewport_is_4_3 = AspectIs4_3(xfmem.viewport.wd, xfmem.viewport.ht);
-    if (AspectIs16_9(rawProjection[2], rawProjection[0]) && viewport_is_4_3)
+    const auto& raw_projection = xfmem.projection.rawProjection;
+    const bool viewport_is_4_3 = AspectIs4_3(xfmem.viewport.wd, xfmem.viewport.ht);
+    if (AspectIs16_9(raw_projection[2], raw_projection[0]) && viewport_is_4_3)
     {
       // Projection is 16:9 and viewport is 4:3, we are rendering an anamorphic
       // widescreen picture.
       m_flush_count_anamorphic++;
     }
-    else if (AspectIs4_3(rawProjection[2], rawProjection[0]) && viewport_is_4_3)
+    else if (AspectIs4_3(raw_projection[2], raw_projection[0]) && viewport_is_4_3)
     {
       // Projection and viewports are both 4:3, we are rendering a normal image.
       m_flush_count_4_3++;
@@ -442,7 +439,7 @@ void VertexManagerBase::Flush()
         g_perf_query->EnableQuery(bpmem.zcontrol.early_ztest ? PQG_ZCOMP_ZCOMPLOC : PQG_ZCOMP);
 
       DrawCurrentBatch(base_index, num_indices, base_vertex);
-      INCSTAT(stats.thisFrame.numDrawCalls);
+      INCSTAT(g_stats.this_frame.num_draw_calls);
 
       if (PerfQueryBase::ShouldEmulate())
         g_perf_query->DisableQuery(bpmem.zcontrol.early_ztest ? PQG_ZCOMP_ZCOMPLOC : PQG_ZCOMP);
@@ -464,6 +461,16 @@ void VertexManagerBase::Flush()
 
 void VertexManagerBase::DoState(PointerWrap& p)
 {
+  if (p.GetMode() == PointerWrap::MODE_READ)
+  {
+    // Flush old vertex data before loading state.
+    Flush();
+
+    // Clear all caches that touch RAM
+    // (? these don't appear to touch any emulation state that gets saved. moved to on load only.)
+    VertexLoaderManager::MarkAllDirty();
+  }
+
   p.Do(m_zslope);
 }
 

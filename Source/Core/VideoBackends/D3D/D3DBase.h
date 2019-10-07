@@ -28,7 +28,7 @@ class SwapChain;
 
 namespace D3D
 {
-extern ComPtr<IDXGIFactory2> dxgi_factory;
+extern ComPtr<IDXGIFactory> dxgi_factory;
 extern ComPtr<ID3D11Device> device;
 extern ComPtr<ID3D11Device1> device1;
 extern ComPtr<ID3D11DeviceContext> context;
@@ -42,6 +42,9 @@ std::vector<u32> GetAAModes(u32 adapter_index);
 
 // Checks for support of the given texture format.
 bool SupportsTextureFormat(DXGI_FORMAT format);
+
+// Checks for logic op support.
+bool SupportsLogicOp(u32 adapter_index);
 
 }  // namespace D3D
 

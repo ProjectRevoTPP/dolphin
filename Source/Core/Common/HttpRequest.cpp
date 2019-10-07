@@ -39,17 +39,14 @@ public:
   std::string EscapeComponent(const std::string& string);
 
 private:
-  static std::mutex s_curl_was_inited_mutex;
-  static bool s_curl_was_inited;
+  static inline std::once_flag s_curl_was_initialized;
   ProgressCallback m_callback;
   std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> m_curl{nullptr, curl_easy_cleanup};
+  std::string m_error_string;
 };
 
-std::mutex HttpRequest::Impl::s_curl_was_inited_mutex;
-bool HttpRequest::Impl::s_curl_was_inited = false;
-
 HttpRequest::HttpRequest(std::chrono::milliseconds timeout_ms, ProgressCallback callback)
-    : m_impl(std::make_unique<Impl>(timeout_ms, callback))
+    : m_impl(std::make_unique<Impl>(timeout_ms, std::move(callback)))
 {
 }
 
@@ -107,16 +104,9 @@ int HttpRequest::Impl::CurlProgressCallback(Impl* impl, double dlnow, double dlt
 }
 
 HttpRequest::Impl::Impl(std::chrono::milliseconds timeout_ms, ProgressCallback callback)
-    : m_callback(callback)
+    : m_callback(std::move(callback))
 {
-  {
-    std::lock_guard<std::mutex> lk(s_curl_was_inited_mutex);
-    if (!s_curl_was_inited)
-    {
-      curl_global_init(CURL_GLOBAL_DEFAULT);
-      s_curl_was_inited = true;
-    }
-  }
+  std::call_once(s_curl_was_initialized, [] { curl_global_init(CURL_GLOBAL_DEFAULT); });
 
   m_curl.reset(curl_easy_init());
   if (!m_curl)
@@ -129,6 +119,10 @@ HttpRequest::Impl::Impl(std::chrono::milliseconds timeout_ms, ProgressCallback c
     curl_easy_setopt(m_curl.get(), CURLOPT_PROGRESSDATA, this);
     curl_easy_setopt(m_curl.get(), CURLOPT_PROGRESSFUNCTION, CurlProgressCallback);
   }
+
+  // Set up error buffer
+  m_error_string.resize(CURL_ERROR_SIZE);
+  curl_easy_setopt(m_curl.get(), CURLOPT_ERRORBUFFER, m_error_string.data());
 
   // libcurl may not have been built with async DNS support, so we disable
   // signal handlers to avoid a possible and likely crash if a resolve times out.
@@ -197,14 +191,14 @@ HttpRequest::Response HttpRequest::Impl::Fetch(const std::string& url, Method me
 
   curl_slist* list = nullptr;
   Common::ScopeGuard list_guard{[&list] { curl_slist_free_all(list); }};
-  for (const std::pair<std::string, std::optional<std::string>>& header : headers)
+  for (const auto& [name, value] : headers)
   {
-    if (!header.second)
-      list = curl_slist_append(list, (header.first + ":").c_str());
-    else if (header.second->empty())
-      list = curl_slist_append(list, (header.first + ";").c_str());
+    if (!value)
+      list = curl_slist_append(list, (name + ':').c_str());
+    else if (value->empty())
+      list = curl_slist_append(list, (name + ';').c_str());
     else
-      list = curl_slist_append(list, (header.first + ": " + *header.second).c_str());
+      list = curl_slist_append(list, (name + ": " + *value).c_str());
   }
   curl_easy_setopt(m_curl.get(), CURLOPT_HTTPHEADER, list);
 
@@ -216,7 +210,7 @@ HttpRequest::Response HttpRequest::Impl::Fetch(const std::string& url, Method me
   const CURLcode res = curl_easy_perform(m_curl.get());
   if (res != CURLE_OK)
   {
-    ERROR_LOG(COMMON, "Failed to %s %s: %s", type, url.c_str(), curl_easy_strerror(res));
+    ERROR_LOG(COMMON, "Failed to %s %s: %s", type, url.c_str(), m_error_string.c_str());
     return {};
   }
 
@@ -227,8 +221,8 @@ HttpRequest::Response HttpRequest::Impl::Fetch(const std::string& url, Method me
   curl_easy_getinfo(m_curl.get(), CURLINFO_RESPONSE_CODE, &response_code);
   if (response_code != 200)
   {
-    ERROR_LOG(COMMON, "Failed to %s %s: server replied with code %li and body\n\x1b[0m%s", type,
-              url.c_str(), response_code, buffer.data());
+    ERROR_LOG(COMMON, "Failed to %s %s: server replied with code %li and body\n\x1b[0m%.*s", type,
+              url.c_str(), response_code, static_cast<int>(buffer.size()), buffer.data());
     return {};
   }
 

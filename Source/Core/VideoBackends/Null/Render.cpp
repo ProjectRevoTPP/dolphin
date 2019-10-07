@@ -2,10 +2,9 @@
 // Licensed under GPLv2+
 // Refer to the license.txt file included.
 
-#include "Common/Logging/Log.h"
+#include "VideoBackends/Null/Render.h"
 
 #include "VideoBackends/Null/NullTexture.h"
-#include "VideoBackends/Null/Render.h"
 
 #include "VideoCommon/AbstractPipeline.h"
 #include "VideoCommon/AbstractShader.h"
@@ -45,11 +44,10 @@ class NullShader final : public AbstractShader
 {
 public:
   explicit NullShader(ShaderStage stage) : AbstractShader(stage) {}
-  ~NullShader() = default;
 };
 
-std::unique_ptr<AbstractShader> Renderer::CreateShaderFromSource(ShaderStage stage,
-                                                                 const char* source, size_t length)
+std::unique_ptr<AbstractShader>
+Renderer::CreateShaderFromSource(ShaderStage stage, [[maybe_unused]] std::string_view source)
 {
   return std::make_unique<NullShader>(stage);
 }
@@ -62,9 +60,6 @@ std::unique_ptr<AbstractShader> Renderer::CreateShaderFromBinary(ShaderStage sta
 
 class NullPipeline final : public AbstractPipeline
 {
-public:
-  NullPipeline() : AbstractPipeline() {}
-  ~NullPipeline() override = default;
 };
 
 std::unique_ptr<AbstractPipeline> Renderer::CreatePipeline(const AbstractPipelineConfig& config,

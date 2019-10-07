@@ -32,6 +32,8 @@ private:
   void CreateNunchukLayout();
   void CreateTurntableLayout();
   void CreateUDrawTabletLayout();
+  void CreateDrawsomeTabletLayout();
+  void CreateTaTaConLayout();
   void CreateMainLayout();
 
   // Main
@@ -43,4 +45,6 @@ private:
   QGroupBox* m_nunchuk_box;
   QGroupBox* m_turntable_box;
   QGroupBox* m_udraw_tablet_box;
+  QGroupBox* m_drawsome_tablet_box;
+  QGroupBox* m_tatacon_box;
 };

@@ -28,7 +28,6 @@ class VolumeWAD : public Volume
 {
 public:
   VolumeWAD(std::unique_ptr<BlobReader> reader);
-  ~VolumeWAD();
   bool Read(u64 offset, u64 length, u8* buffer,
             const Partition& partition = PARTITION_NONE) const override;
   const FileSystem* GetFileSystem(const Partition& partition = PARTITION_NONE) const override;
@@ -38,7 +37,13 @@ public:
   const IOS::ES::TMDReader& GetTMD(const Partition& partition = PARTITION_NONE) const override;
   const std::vector<u8>&
   GetCertificateChain(const Partition& partition = PARTITION_NONE) const override;
+  std::vector<u8> GetContent(u16 index) const override;
   std::vector<u64> GetContentOffsets() const override;
+  bool CheckContentIntegrity(const IOS::ES::Content& content, const std::vector<u8>& encrypted_data,
+                             const IOS::ES::TicketReader& ticket) const override;
+  bool CheckContentIntegrity(const IOS::ES::Content& content, u64 content_offset,
+                             const IOS::ES::TicketReader& ticket) const override;
+  IOS::ES::TicketReader GetTicketWithFixedCommonKey() const override;
   std::string GetGameID(const Partition& partition = PARTITION_NONE) const override;
   std::string GetGameTDBID(const Partition& partition = PARTITION_NONE) const override;
   std::string GetMakerID(const Partition& partition = PARTITION_NONE) const override;
@@ -79,4 +84,4 @@ private:
   u32 m_data_size = 0;
 };
 
-}  // namespace
+}  // namespace DiscIO

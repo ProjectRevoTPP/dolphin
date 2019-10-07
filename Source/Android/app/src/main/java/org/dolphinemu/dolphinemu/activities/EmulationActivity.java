@@ -195,7 +195,39 @@ public final class EmulationActivity extends AppCompatActivity
     launcher.putExtra(EXTRA_SELECTED_TITLE, gameFile.getTitle());
     launcher.putExtra(EXTRA_SELECTED_GAMEID, gameFile.getGameId());
     launcher.putExtra(EXTRA_PLATFORM, gameFile.getPlatform());
-    activity.startActivityForResult(launcher, MainPresenter.REQUEST_EMULATE_GAME);
+    activity.startActivity(launcher);
+  }
+
+  public static void launchFile(FragmentActivity activity, String[] filePaths)
+  {
+    Intent launcher = new Intent(activity, EmulationActivity.class);
+    launcher.putExtra(EXTRA_SELECTED_GAMES, filePaths);
+
+    // Try parsing a GameFile first. This should succeed for disc images.
+    GameFile gameFile = GameFile.parse(filePaths[0]);
+    if (gameFile != null)
+    {
+      // We don't want to pollute the game file cache with this new file,
+      // so we can't just call launch() and let it handle the setup.
+      launcher.putExtra(EXTRA_SELECTED_TITLE, gameFile.getTitle());
+      launcher.putExtra(EXTRA_SELECTED_GAMEID, gameFile.getGameId());
+      launcher.putExtra(EXTRA_PLATFORM, gameFile.getPlatform());
+    }
+    else
+    {
+      // Display the path to the file as the game title in the menu.
+      launcher.putExtra(EXTRA_SELECTED_TITLE, filePaths[0]);
+
+      // Use 00000000 as the game ID. This should match the Desktop version behavior.
+      // TODO: This should really be pulled from the Core.
+      launcher.putExtra(EXTRA_SELECTED_GAMEID, "00000000");
+
+      // GameFile might be a FIFO log. Assume GameCube for the platform. It doesn't really matter
+      // anyway, since this only controls the input, and the FIFO player doesn't take any input.
+      launcher.putExtra(EXTRA_PLATFORM, Platform.GAMECUBE);
+    }
+
+    activity.startActivity(launcher);
   }
 
   @Override
@@ -589,7 +621,7 @@ public final class EmulationActivity extends AppCompatActivity
         return;
 
       case MENU_ACTION_CHANGE_DISC:
-        FileBrowserHelper.openFilePicker(this, REQUEST_CHANGE_DISC);
+        FileBrowserHelper.openFilePicker(this, REQUEST_CHANGE_DISC, false);
         return;
 
       case MENU_SET_IR_SENSITIVITY:
@@ -821,23 +853,18 @@ public final class EmulationActivity extends AppCompatActivity
             (dialog, indexSelected) ->
             {
               editor.putInt("wiiController", indexSelected);
-
               NativeLibrary.SetConfig("WiimoteNew.ini", "Wiimote1", "Extension",
                       getResources().getStringArray(R.array.controllersValues)[indexSelected]);
+              NativeLibrary.ReloadWiimoteConfig();
             });
     builder.setPositiveButton(getString(R.string.ok), (dialogInterface, i) ->
     {
       editor.apply();
-
       mEmulationFragment.refreshInputOverlay();
-
-      Toast.makeText(getApplication(), R.string.emulation_controller_changed, Toast.LENGTH_SHORT)
-              .show();
     });
 
     AlertDialog alertDialog = builder.create();
     alertDialog.show();
-
   }
 
   private void setIRSensitivity()
@@ -944,13 +971,15 @@ public final class EmulationActivity extends AppCompatActivity
     builder.setView(view);
     builder.setPositiveButton(R.string.ok, (dialogInterface, i) ->
     {
-      SettingsFile.saveSingleCustomSetting(mSelectedGameId, Settings.SECTION_CONTROLS,
+      NativeLibrary.LoadGameIniFile(mSelectedGameId);
+      NativeLibrary.SetUserSetting(mSelectedGameId, Settings.SECTION_CONTROLS,
               SettingsFile.KEY_WIIBIND_IR_PITCH, text_slider_value_pitch.getText().toString());
-      SettingsFile.saveSingleCustomSetting(mSelectedGameId, Settings.SECTION_CONTROLS,
+      NativeLibrary.SetUserSetting(mSelectedGameId, Settings.SECTION_CONTROLS,
               SettingsFile.KEY_WIIBIND_IR_YAW, text_slider_value_yaw.getText().toString());
-      SettingsFile.saveSingleCustomSetting(mSelectedGameId, Settings.SECTION_CONTROLS,
+      NativeLibrary.SetUserSetting(mSelectedGameId, Settings.SECTION_CONTROLS,
               SettingsFile.KEY_WIIBIND_IR_VERTICAL_OFFSET,
               text_slider_value_vertical_offset.getText().toString());
+      NativeLibrary.SaveGameIniFile(mSelectedGameId);
 
       NativeLibrary.ReloadWiimoteConfig();
 

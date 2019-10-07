@@ -32,6 +32,7 @@
 #include "Core/ConfigManager.h"
 #include "Core/Core.h"
 #include "Core/HW/DVD/DVDInterface.h"
+#include "Core/HW/EXI/EXI_Device.h"
 #include "Core/HW/WiiSave.h"
 #include "Core/WiiUtils.h"
 
@@ -322,7 +323,7 @@ void GameList::ShowContextMenu(const QPoint&)
     if (platform == DiscIO::Platform::WiiDisc)
     {
       auto* perform_disc_update = menu->addAction(tr("Perform System Update"), this,
-                                                  [ this, file_path = game->GetFilePath() ] {
+                                                  [this, file_path = game->GetFilePath()] {
                                                     WiiUpdate::PerformDiscUpdate(file_path, this);
                                                   });
       perform_disc_update->setEnabled(!Core::IsRunning() || !SConfig::GetInstance().bWii);
@@ -448,7 +449,7 @@ void GameList::ExportWiiSave()
   {
     QString failed_str;
     for (const std::string& str : failed)
-      failed_str.append(QStringLiteral("\n")).append(QString::fromStdString(str));
+      failed_str.append(QLatin1Char{'\n'}).append(QString::fromStdString(str));
     ModalMessageBox::critical(this, tr("Save Export"),
                               tr("Failed to export the following save files:") + failed_str);
   }
@@ -578,7 +579,7 @@ void GameList::CompressISO(bool decompress)
     if (decompress)
     {
       if (files.size() > 1)
-        progress_dialog.setLabelText(tr("Decompressing...") + QStringLiteral("\n") +
+        progress_dialog.setLabelText(tr("Decompressing...") + QLatin1Char{'\n'} +
                                      QFileInfo(QString::fromStdString(original_path)).fileName());
       good = DiscIO::DecompressBlobToFile(original_path, dst_path.toStdString(), &CompressCB,
                                           &progress_dialog);
@@ -586,7 +587,7 @@ void GameList::CompressISO(bool decompress)
     else
     {
       if (files.size() > 1)
-        progress_dialog.setLabelText(tr("Compressing...") + QStringLiteral("\n") +
+        progress_dialog.setLabelText(tr("Compressing...") + QLatin1Char{'\n'} +
                                      QFileInfo(QString::fromStdString(original_path)).fileName());
       good = DiscIO::CompressFileToBlob(original_path, dst_path.toStdString(),
                                         file->GetPlatform() == DiscIO::Platform::WiiDisc ? 1 : 0,

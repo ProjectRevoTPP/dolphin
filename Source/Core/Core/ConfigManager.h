@@ -11,31 +11,39 @@
 #include <utility>
 #include <vector>
 
-#include "Common/IniFile.h"
-#include "Core/HW/EXI/EXI_Device.h"
-#include "Core/HW/SI/SI_Device.h"
+#include "Common/Common.h"
+#include "Common/CommonTypes.h"
+
+class IniFile;
 
 namespace DiscIO
 {
-enum class Country;
 enum class Language;
+enum class Platform;
 enum class Region;
 struct Partition;
 class Volume;
 }  // namespace DiscIO
 
-namespace IOS
+namespace ExpansionInterface
 {
-namespace ES
+enum TEXIDevices : int;
+}  // namespace ExpansionInterface
+
+namespace IOS::ES
 {
 class TMDReader;
-}
-}  // namespace IOS
+}  // namespace IOS::ES
 
 namespace PowerPC
 {
 enum class CPUCore;
 }  // namespace PowerPC
+
+namespace SerialInterface
+{
+enum SIDevices : int;
+}  // namespace SerialInterface
 
 struct BootParameters;
 
@@ -45,9 +53,8 @@ struct BootParameters;
 #define BACKEND_CUBEB "Cubeb"
 #define BACKEND_OPENAL "OpenAL"
 #define BACKEND_PULSEAUDIO "Pulse"
-#define BACKEND_XAUDIO2 "XAudio2"
 #define BACKEND_OPENSLES "OpenSLES"
-#define BACKEND_WASAPI "WASAPI (Exclusive Mode)"
+#define BACKEND_WASAPI _trans("WASAPI (Exclusive Mode)")
 
 enum class GPUDeterminismMode
 {
@@ -132,7 +139,7 @@ struct SConfig
   float fSyncGpuOverclock;
 
   int SelectedLanguage = 0;
-  bool bOverrideGCLanguage = false;
+  bool bOverrideRegionSettings = false;
 
   bool bWii = false;
   bool m_is_mios = false;
@@ -159,8 +166,6 @@ struct SConfig
   // USB passthrough settings
   std::set<std::pair<u16, u16>> m_usb_passthrough_devices;
   bool IsUSBDeviceWhitelisted(std::pair<u16, u16> vid_pid) const;
-
-  bool m_enable_signature_checks = true;
 
   // Fifo Player related settings
   bool bLoopFifoReplay = true;
@@ -193,7 +198,7 @@ struct SConfig
   u16 GetRevision() const { return m_revision; }
   void ResetRunningGameMetadata();
   void SetRunningGameMetadata(const DiscIO::Volume& volume, const DiscIO::Partition& partition);
-  void SetRunningGameMetadata(const IOS::ES::TMDReader& tmd);
+  void SetRunningGameMetadata(const IOS::ES::TMDReader& tmd, DiscIO::Platform platform);
 
   void LoadDefaults();
   // Replaces NTSC-K with some other region, and doesn't replace non-NTSC-K regions
@@ -204,6 +209,7 @@ struct SConfig
   bool SetPathsAndGameMetadata(const BootParameters& boot);
   static DiscIO::Region GetFallbackRegion();
   DiscIO::Language GetCurrentLanguage(bool wii) const;
+  DiscIO::Language GetLanguageAdjustedForRegion(bool wii, DiscIO::Region region) const;
 
   IniFile LoadDefaultGameIni() const;
   IniFile LoadLocalGameIni() const;
@@ -357,7 +363,7 @@ private:
   void LoadJitDebugSettings(IniFile& ini);
 
   void SetRunningGameMetadata(const std::string& game_id, const std::string& gametdb_id,
-                              u64 title_id, u16 revision, DiscIO::Country country);
+                              u64 title_id, u16 revision, DiscIO::Region region);
 
   static SConfig* m_Instance;
 

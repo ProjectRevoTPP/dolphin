@@ -3,11 +3,12 @@
 // Refer to the license.txt file included.
 
 #include "VideoBackends/D3D/PerfQuery.h"
-#include "Common/CommonFuncs.h"
+
 #include "Common/CommonTypes.h"
 #include "Common/Logging/Log.h"
 #include "VideoBackends/D3D/D3DBase.h"
 #include "VideoCommon/RenderBase.h"
+#include "VideoCommon/VideoCommon.h"
 
 namespace DX11
 {
@@ -63,7 +64,7 @@ void PerfQuery::DisableQuery(PerfQueryGroup type)
 void PerfQuery::ResetQuery()
 {
   m_query_count = 0;
-  std::fill_n(m_results, ArraySize(m_results), 0);
+  std::fill(std::begin(m_results), std::end(m_results), 0);
 }
 
 u32 PerfQuery::GetQueryResult(PerfQueryType type)

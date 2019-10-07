@@ -57,8 +57,6 @@ JITWidget::JITWidget(QWidget* parent) : QDockWidget(parent)
 #else
   m_disassembler = GetNewDisassembler("UNK");
 #endif
-
-  Update();
 }
 
 JITWidget::~JITWidget()
@@ -115,7 +113,7 @@ void JITWidget::CreateWidgets()
 
 void JITWidget::ConnectWidgets()
 {
-  connect(m_refresh_button, &QPushButton::pressed, this, &JITWidget::Update);
+  connect(m_refresh_button, &QPushButton::clicked, this, &JITWidget::Update);
 }
 
 void JITWidget::Compare(u32 address)
@@ -126,6 +124,9 @@ void JITWidget::Compare(u32 address)
 
 void JITWidget::Update()
 {
+  if (!isVisible())
+    return;
+
   if (!m_address)
   {
     m_ppc_asm_widget->setHtml(QStringLiteral("<i>%1</i>").arg(tr("(ppc)")));
@@ -207,4 +208,9 @@ void JITWidget::Update()
 void JITWidget::closeEvent(QCloseEvent*)
 {
   Settings::Instance().SetJITVisible(false);
+}
+
+void JITWidget::showEvent(QShowEvent* event)
+{
+  Update();
 }

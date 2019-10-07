@@ -1,5 +1,6 @@
 package org.dolphinemu.dolphinemu.features.settings.ui;
 
+import android.app.AlertDialog;
 import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.Intent;
@@ -97,7 +98,6 @@ public final class SettingsActivity extends AppCompatActivity implements Setting
     mPresenter.onBackPressed();
   }
 
-
   @Override
   public void showSettingsFragment(MenuTag menuTag, Bundle extras, boolean addToStack,
           String gameID)
@@ -181,6 +181,18 @@ public final class SettingsActivity extends AppCompatActivity implements Setting
   public void showExternalStorageNotMountedHint()
   {
     Toast.makeText(this, R.string.external_storage_not_mounted, Toast.LENGTH_SHORT)
+            .show();
+  }
+
+  @Override
+  public void showGameIniJunkDeletionQuestion()
+  {
+    new AlertDialog.Builder(this)
+            .setTitle(getString(R.string.game_ini_junk_title))
+            .setMessage(getString(R.string.game_ini_junk_question))
+            .setPositiveButton(R.string.yes, (dialogInterface, i) -> mPresenter.clearSettings())
+            .setNegativeButton(R.string.no, null)
+            .create()
             .show();
   }
 

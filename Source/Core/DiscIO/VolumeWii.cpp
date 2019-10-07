@@ -443,12 +443,16 @@ bool VolumeWii::CheckH3TableIntegrity(const Partition& partition) const
     return false;
 
   std::array<u8, 20> h3_table_sha1;
-  mbedtls_sha1(h3_table.data(), h3_table.size(), h3_table_sha1.data());
+  mbedtls_sha1_ret(h3_table.data(), h3_table.size(), h3_table_sha1.data());
   return h3_table_sha1 == contents[0].sha1;
 }
 
-bool VolumeWii::CheckBlockIntegrity(u64 block_index, const Partition& partition) const
+bool VolumeWii::CheckBlockIntegrity(u64 block_index, const std::vector<u8>& encrypted_data,
+                                    const Partition& partition) const
 {
+  if (encrypted_data.size() != BLOCK_TOTAL_SIZE)
+    return false;
+
   auto it = m_partitions.find(partition);
   if (it == m_partitions.end())
     return false;
@@ -462,46 +466,55 @@ bool VolumeWii::CheckBlockIntegrity(u64 block_index, const Partition& partition)
   if (!aes_context)
     return false;
 
-  const u64 cluster_offset =
-      partition.offset + *partition_details.data_offset + block_index * BLOCK_TOTAL_SIZE;
-
-  // Read and decrypt the cluster metadata
-  u8 cluster_metadata_crypted[BLOCK_HEADER_SIZE];
   u8 cluster_metadata[BLOCK_HEADER_SIZE];
   u8 iv[16] = {0};
-  if (!m_reader->Read(cluster_offset, BLOCK_HEADER_SIZE, cluster_metadata_crypted))
-    return false;
   mbedtls_aes_crypt_cbc(aes_context, MBEDTLS_AES_DECRYPT, BLOCK_HEADER_SIZE, iv,
-                        cluster_metadata_crypted, cluster_metadata);
+                        encrypted_data.data(), cluster_metadata);
 
   u8 cluster_data[BLOCK_DATA_SIZE];
-  if (!Read(block_index * BLOCK_DATA_SIZE, BLOCK_DATA_SIZE, cluster_data, partition))
-    return false;
+  std::memcpy(iv, encrypted_data.data() + 0x3D0, 16);
+  mbedtls_aes_crypt_cbc(aes_context, MBEDTLS_AES_DECRYPT, BLOCK_DATA_SIZE, iv,
+                        encrypted_data.data() + BLOCK_HEADER_SIZE, cluster_data);
 
   for (u32 hash_index = 0; hash_index < 31; ++hash_index)
   {
     u8 h0_hash[SHA1_SIZE];
-    mbedtls_sha1(cluster_data + hash_index * 0x400, 0x400, h0_hash);
+    mbedtls_sha1_ret(cluster_data + hash_index * 0x400, 0x400, h0_hash);
     if (memcmp(h0_hash, cluster_metadata + hash_index * SHA1_SIZE, SHA1_SIZE))
       return false;
   }
 
   u8 h1_hash[SHA1_SIZE];
-  mbedtls_sha1(cluster_metadata, SHA1_SIZE * 31, h1_hash);
+  mbedtls_sha1_ret(cluster_metadata, SHA1_SIZE * 31, h1_hash);
   if (memcmp(h1_hash, cluster_metadata + 0x280 + (block_index % 8) * SHA1_SIZE, SHA1_SIZE))
     return false;
 
   u8 h2_hash[SHA1_SIZE];
-  mbedtls_sha1(cluster_metadata + 0x280, SHA1_SIZE * 8, h2_hash);
+  mbedtls_sha1_ret(cluster_metadata + 0x280, SHA1_SIZE * 8, h2_hash);
   if (memcmp(h2_hash, cluster_metadata + 0x340 + (block_index / 8 % 8) * SHA1_SIZE, SHA1_SIZE))
     return false;
 
   u8 h3_hash[SHA1_SIZE];
-  mbedtls_sha1(cluster_metadata + 0x340, SHA1_SIZE * 8, h3_hash);
+  mbedtls_sha1_ret(cluster_metadata + 0x340, SHA1_SIZE * 8, h3_hash);
   if (memcmp(h3_hash, partition_details.h3_table->data() + block_index / 64 * SHA1_SIZE, SHA1_SIZE))
     return false;
 
   return true;
+}
+
+bool VolumeWii::CheckBlockIntegrity(u64 block_index, const Partition& partition) const
+{
+  auto it = m_partitions.find(partition);
+  if (it == m_partitions.end())
+    return false;
+  const PartitionDetails& partition_details = it->second;
+  const u64 cluster_offset =
+      partition.offset + *partition_details.data_offset + block_index * BLOCK_TOTAL_SIZE;
+
+  std::vector<u8> cluster(BLOCK_TOTAL_SIZE);
+  if (!m_reader->Read(cluster_offset, cluster.size(), cluster.data()))
+    return false;
+  return CheckBlockIntegrity(block_index, cluster, partition);
 }
 
 }  // namespace DiscIO

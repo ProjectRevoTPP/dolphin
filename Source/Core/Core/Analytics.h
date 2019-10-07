@@ -8,6 +8,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "Common/Analytics.h"
@@ -24,6 +25,10 @@ enum class GameQuirk
   // Sometimes code run from ICache is different from its mirror in RAM.
   ICACHE_MATTERS = 0,
 
+  // The Wii remote hardware makes it possible to bypass normal data reporting and directly
+  // "read" extension or IR data. This would break our current TAS/NetPlay implementation.
+  DIRECTLY_READS_WIIMOTE_INPUT,
+
   COUNT,
 };
 
@@ -31,7 +36,7 @@ class DolphinAnalytics
 {
 public:
   // Performs lazy-initialization of a singleton and returns the instance.
-  static std::shared_ptr<DolphinAnalytics> Instance();
+  static DolphinAnalytics& Instance();
 
 #if defined(ANDROID)
   // Get value from java.
@@ -45,7 +50,7 @@ public:
   void GenerateNewIdentity();
 
   // Reports a Dolphin start event.
-  void ReportDolphinStart(const std::string& ui_type);
+  void ReportDolphinStart(std::string_view ui_type);
 
   // Generates a base report for a "Game start" event. Also preseeds the
   // per-game base data.
@@ -71,7 +76,7 @@ public:
   template <typename T>
   void Send(T report)
   {
-    std::lock_guard<std::mutex> lk(m_reporter_mutex);
+    std::lock_guard lk{m_reporter_mutex};
     m_reporter.Send(report);
   }
 
@@ -84,7 +89,7 @@ private:
   // Returns a unique ID derived on the global unique ID, hashed with some
   // report-specific data. This avoid correlation between different types of
   // events.
-  std::string MakeUniqueId(const std::string& data);
+  std::string MakeUniqueId(std::string_view data) const;
 
   // Unique ID. This should never leave the application. Only used derived
   // values created by MakeUniqueId.
@@ -119,9 +124,4 @@ private:
 
   std::mutex m_reporter_mutex;
   Common::AnalyticsReporter m_reporter;
-
-  // Shared pointer in order to allow for multithreaded use of the instance and
-  // avoid races at reinitialization time.
-  static std::mutex s_instance_mutex;
-  static std::shared_ptr<DolphinAnalytics> s_instance;
 };

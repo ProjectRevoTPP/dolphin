@@ -16,6 +16,7 @@ import android.view.View;
 import android.widget.Toast;
 
 import org.dolphinemu.dolphinemu.R;
+import org.dolphinemu.dolphinemu.activities.EmulationActivity;
 import org.dolphinemu.dolphinemu.adapters.PlatformPagerAdapter;
 import org.dolphinemu.dolphinemu.features.settings.ui.MenuTag;
 import org.dolphinemu.dolphinemu.features.settings.ui.SettingsActivity;
@@ -132,19 +133,6 @@ public final class MainActivity extends AppCompatActivity implements MainView
   }
 
   @Override
-  public void refreshFragmentScreenshot(int fragmentPosition)
-  {
-    // Invalidate Picasso image so that the new screenshot is animated in.
-    Platform platform = Platform.fromPosition(mViewPager.getCurrentItem());
-    PlatformGamesView fragment = getPlatformGamesView(platform);
-
-    if (fragment != null)
-    {
-      fragment.refreshScreenshotAtPosition(fragmentPosition);
-    }
-  }
-
-  @Override
   public void launchSettingsActivity(MenuTag menuTag)
   {
     SettingsActivity.launch(this, menuTag, "");
@@ -154,6 +142,12 @@ public final class MainActivity extends AppCompatActivity implements MainView
   public void launchFileListActivity()
   {
     FileBrowserHelper.openDirectoryPicker(this);
+  }
+
+  @Override
+  public void launchOpenFileActivity()
+  {
+    FileBrowserHelper.openFilePicker(this, MainPresenter.REQUEST_OPEN_FILE, true);
   }
 
   /**
@@ -174,8 +168,12 @@ public final class MainActivity extends AppCompatActivity implements MainView
         }
         break;
 
-      case MainPresenter.REQUEST_EMULATE_GAME:
-        mPresenter.refreshFragmentScreenshot(resultCode);
+      case MainPresenter.REQUEST_OPEN_FILE:
+        // If the user picked a file, as opposed to just backing out.
+        if (resultCode == MainActivity.RESULT_OK)
+        {
+          EmulationActivity.launchFile(this, FileBrowserHelper.getSelectedFiles(result));
+        }
         break;
     }
   }

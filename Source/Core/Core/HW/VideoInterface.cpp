@@ -4,6 +4,7 @@
 
 #include "Core/HW/VideoInterface.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -12,7 +13,6 @@
 #include "Common/CommonTypes.h"
 #include "Common/Config/Config.h"
 #include "Common/Logging/Log.h"
-#include "Common/MathUtil.h"
 
 #include "Core/Config/MainSettings.h"
 #include "Core/Config/SYSCONFSettings.h"
@@ -191,7 +191,7 @@ void Preset(bool _bNTSC)
   m_BorderHBlank.Hex = 0;
 
   s_ticks_last_line_start = 0;
-  s_half_line_count = 1;
+  s_half_line_count = 0;
   s_half_line_of_next_si_poll = num_half_lines_for_si_poll;  // first sampling starts at vsync
   s_current_field = FieldType::Odd;
 
@@ -317,7 +317,7 @@ void RegisterMMIO(MMIO::Mapping* mmio, u32 base)
   // MMIOs with unimplemented writes that trigger warnings.
   mmio->Register(
       base | VI_VERTICAL_BEAM_POSITION,
-      MMIO::ComplexRead<u16>([](u32) { return 1 + (s_half_line_count - 1) / 2; }),
+      MMIO::ComplexRead<u16>([](u32) { return 1 + (s_half_line_count) / 2; }),
       MMIO::ComplexWrite<u16>([](u32, u16 val) {
         WARN_LOG(VIDEOINTERFACE,
                  "Changing vertical beam position to 0x%04x - not documented or implemented yet",
@@ -328,7 +328,7 @@ void RegisterMMIO(MMIO::Mapping* mmio, u32 base)
         u16 value = static_cast<u16>(1 + m_HTiming0.HLW *
                                              (CoreTiming::GetTicks() - s_ticks_last_line_start) /
                                              (GetTicksPerHalfLine()));
-        return MathUtil::Clamp(value, static_cast<u16>(1), static_cast<u16>(m_HTiming0.HLW * 2));
+        return std::clamp<u16>(value, 1, m_HTiming0.HLW * 2);
       }),
       MMIO::ComplexWrite<u16>([](u32, u16 val) {
         WARN_LOG(VIDEOINTERFACE,
@@ -726,23 +726,37 @@ static void BeginField(FieldType field, u64 ticks)
 static void EndField()
 {
   Core::VideoThrottle();
+  Core::OnFrameEnd();
 }
 
 // Purpose: Send VI interrupt when triggered
 // Run when: When a frame is scanned (progressive/interlace)
 void Update(u64 ticks)
 {
+  // If an SI poll is scheduled to happen on this half-line, do it!
+
   if (s_half_line_of_next_si_poll == s_half_line_count)
   {
     SerialInterface::UpdateDevices();
-
-    // If this setting is enabled, only poll twice per field instead of what the game wanted. It may
-    // be set during NetPlay or Movie playback.
-    if (Config::Get(Config::MAIN_REDUCE_POLLING_RATE))
-      s_half_line_of_next_si_poll += GetHalfLinesPerEvenField() / 2;
-    else
-      s_half_line_of_next_si_poll += SerialInterface::GetPollXLines();
+    s_half_line_of_next_si_poll += 2 * SerialInterface::GetPollXLines();
   }
+
+  // If this half-line is at the actual boundary of either field, schedule an SI poll to happen
+  // some number of half-lines in the future
+
+  if (s_half_line_count == 0)
+  {
+    s_half_line_of_next_si_poll = num_half_lines_for_si_poll;  // first results start at vsync
+  }
+  if (s_half_line_count == GetHalfLinesPerEvenField())
+  {
+    s_half_line_of_next_si_poll = GetHalfLinesPerEvenField() + num_half_lines_for_si_poll;
+  }
+
+  // If this half-line is at some boundary of the "active video lines" in either field, we either
+  // need to (a) send a request to the GPU thread to actually render the XFB, or (b) increment
+  // the number of frames we've actually drawn
+
   if (s_half_line_count == s_even_field_first_hl)
   {
     BeginField(FieldType::Even, ticks);
@@ -760,30 +774,30 @@ void Update(u64 ticks)
     EndField();
   }
 
+  // Move to the next half-line and potentially roll-over the count to zero. If we've reached
+  // the beginning of a new full-line, update the timer
+
+  s_half_line_count++;
+  if (s_half_line_count == GetHalfLinesPerEvenField() + GetHalfLinesPerOddField())
+  {
+    s_half_line_count = 0;
+  }
+
+  if (!(s_half_line_count & 1))
+  {
+    s_ticks_last_line_start = CoreTiming::GetTicks();
+  }
+
+  // Check if we need to assert IR_INT. Note that the granularity of our current horizontal
+  // position is limited to half-lines.
+
   for (UVIInterruptRegister& reg : m_InterruptRegister)
   {
-    if (s_half_line_count + 1 == 2u * reg.VCT)
+    u32 target_halfline = (reg.HCT > m_HTiming0.HLW) ? 1 : 0;
+    if ((1 + (s_half_line_count) / 2 == reg.VCT) && ((s_half_line_count & 1) == target_halfline))
     {
       reg.IR_INT = 1;
     }
-  }
-
-  s_half_line_count++;
-
-  if (s_half_line_count > GetHalfLinesPerEvenField() + GetHalfLinesPerOddField())
-  {
-    s_half_line_count = 1;
-    s_half_line_of_next_si_poll = num_half_lines_for_si_poll;  // first results start at vsync
-  }
-
-  if (s_half_line_count == GetHalfLinesPerEvenField())
-  {
-    s_half_line_of_next_si_poll = GetHalfLinesPerEvenField() + num_half_lines_for_si_poll;
-  }
-
-  if (s_half_line_count & 1)
-  {
-    s_ticks_last_line_start = CoreTiming::GetTicks();
   }
 
   UpdateInterrupts();

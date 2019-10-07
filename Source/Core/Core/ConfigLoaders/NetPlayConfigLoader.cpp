@@ -29,7 +29,7 @@ public:
     layer->Set(Config::MAIN_CPU_THREAD, m_settings.m_CPUthread);
     layer->Set(Config::MAIN_CPU_CORE, m_settings.m_CPUcore);
     layer->Set(Config::MAIN_GC_LANGUAGE, m_settings.m_SelectedLanguage);
-    layer->Set(Config::MAIN_OVERRIDE_GC_LANGUAGE, m_settings.m_OverrideGCLanguage);
+    layer->Set(Config::MAIN_OVERRIDE_REGION_SETTINGS, m_settings.m_OverrideRegionSettings);
     layer->Set(Config::MAIN_DSP_HLE, m_settings.m_DSPHLE);
     layer->Set(Config::MAIN_OVERCLOCK_ENABLE, m_settings.m_OCEnable);
     layer->Set(Config::MAIN_OVERCLOCK, m_settings.m_OCFactor);
@@ -37,7 +37,6 @@ public:
     layer->Set(Config::MAIN_SLOT_B, static_cast<int>(m_settings.m_EXIDevice[1]));
     layer->Set(Config::MAIN_SERIAL_PORT_1, static_cast<int>(m_settings.m_EXIDevice[2]));
     layer->Set(Config::MAIN_WII_SD_CARD_WRITABLE, m_settings.m_WriteToMemcard);
-    layer->Set(Config::MAIN_REDUCE_POLLING_RATE, m_settings.m_ReducePollingRate);
     layer->Set(Config::MAIN_DSP_JIT, m_settings.m_DSPEnableJIT);
     layer->Set(Config::SYSCONF_PROGRESSIVE_SCAN, m_settings.m_ProgressiveScan);
     layer->Set(Config::SYSCONF_PAL60, m_settings.m_PAL60);

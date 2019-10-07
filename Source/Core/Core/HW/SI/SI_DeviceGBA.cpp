@@ -290,7 +290,7 @@ CSIDevice_GBA::CSIDevice_GBA(SIDevices device, int device_number) : ISIDevice(de
 {
 }
 
-int CSIDevice_GBA::RunBuffer(u8* buffer, int length)
+int CSIDevice_GBA::RunBuffer(u8* buffer, int request_length)
 {
   switch (m_next_action)
   {
@@ -314,9 +314,9 @@ int CSIDevice_GBA::RunBuffer(u8* buffer, int length)
     m_last_cmd = buffer[0];
     m_timestamp_sent = CoreTiming::GetTicks();
     m_next_action = NextAction::WaitTransferTime;
+    [[fallthrough]];
   }
 
-  // [[fallthrough]]b
   case NextAction::WaitTransferTime:
   {
     int elapsed_time = static_cast<int>(CoreTiming::GetTicks() - m_timestamp_sent);
@@ -324,9 +324,9 @@ int CSIDevice_GBA::RunBuffer(u8* buffer, int length)
     if (GetTransferTime(m_last_cmd) > elapsed_time)
       return 0;
     m_next_action = NextAction::ReceiveResponse;
+    [[fallthrough]];
   }
 
-  // [[fallthrough]]
   case NextAction::ReceiveResponse:
   {
     int num_data_received = m_sock_server.Receive(buffer);

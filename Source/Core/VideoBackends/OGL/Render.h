@@ -95,8 +95,8 @@ public:
   std::unique_ptr<AbstractTexture> CreateTexture(const TextureConfig& config) override;
   std::unique_ptr<AbstractStagingTexture>
   CreateStagingTexture(StagingTextureType type, const TextureConfig& config) override;
-  std::unique_ptr<AbstractShader> CreateShaderFromSource(ShaderStage stage, const char* source,
-                                                         size_t length) override;
+  std::unique_ptr<AbstractShader> CreateShaderFromSource(ShaderStage stage,
+                                                         std::string_view source) override;
   std::unique_ptr<AbstractShader> CreateShaderFromBinary(ShaderStage stage, const void* data,
                                                          size_t length) override;
   std::unique_ptr<NativeVertexFormat>
@@ -134,8 +134,9 @@ public:
 
   void Flush() override;
   void WaitForGPUIdle() override;
-  void RenderXFBToScreen(const AbstractTexture* texture,
-                         const MathUtil::Rectangle<int>& rc) override;
+  void RenderXFBToScreen(const MathUtil::Rectangle<int>& target_rc,
+                         const AbstractTexture* source_texture,
+                         const MathUtil::Rectangle<int>& source_rc) override;
   void OnConfigChanged(u32 bits) override;
 
   void ClearScreen(const MathUtil::Rectangle<int>& rc, bool colorEnable, bool alphaEnable,

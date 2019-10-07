@@ -77,6 +77,7 @@ bool IsWii(Platform volume_type);
 bool IsNTSC(Region region);
 
 Country TypicalCountryForRegion(Region region);
+Region SysConfCountryToRegion(u8 country_code);
 // Avoid using this function if you can. Country codes aren't always reliable region indicators.
 Region CountryCodeToRegion(u8 country_code, Platform platform,
                            Region expected_region = Region::Unknown,
@@ -88,4 +89,4 @@ Region GetSysMenuRegion(u16 title_version);
 std::string GetSysMenuVersionString(u16 title_version);
 
 const std::string& GetCompanyFromID(const std::string& company_id);
-}
+}  // namespace DiscIO

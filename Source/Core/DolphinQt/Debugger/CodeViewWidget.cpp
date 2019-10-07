@@ -45,23 +45,21 @@ CodeViewWidget::CodeViewWidget()
   setSelectionBehavior(QAbstractItemView::SelectRows);
 
   setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-
-  for (int i = 0; i < columnCount(); i++)
-  {
-    horizontalHeader()->setSectionResizeMode(i, QHeaderView::Fixed);
-  }
+  setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
 
   verticalHeader()->hide();
   horizontalHeader()->hide();
-  horizontalHeader()->setStretchLastSection(true);
 
   setFont(Settings::Instance().GetDebugFont());
 
-  Update();
+  FontBasedSizing();
 
   connect(this, &CodeViewWidget::customContextMenuRequested, this, &CodeViewWidget::OnContextMenu);
   connect(this, &CodeViewWidget::itemSelectionChanged, this, &CodeViewWidget::OnSelectionChanged);
   connect(&Settings::Instance(), &Settings::DebugFontChanged, this, &QWidget::setFont);
+  connect(&Settings::Instance(), &Settings::DebugFontChanged, this,
+          &CodeViewWidget::FontBasedSizing);
+
   connect(&Settings::Instance(), &Settings::EmulationStateChanged, this, [this] {
     m_address = PC;
     Update();
@@ -82,8 +80,21 @@ static u32 GetBranchFromAddress(u32 addr)
   return std::stoul(hex, nullptr, 16);
 }
 
+void CodeViewWidget::FontBasedSizing()
+{
+  const QFontMetrics fm(Settings::Instance().GetDebugFont());
+  const int rowh = fm.height() + 1;
+  verticalHeader()->setMaximumSectionSize(rowh);
+  horizontalHeader()->setMinimumSectionSize(rowh + 5);
+  setColumnWidth(0, rowh + 5);
+  Update();
+}
+
 void CodeViewWidget::Update()
 {
+  if (!isVisible())
+    return;
+
   if (m_updating)
     return;
 
@@ -98,8 +109,11 @@ void CodeViewWidget::Update()
 
   setRowCount(rows);
 
+  const QFontMetrics fm(Settings::Instance().GetDebugFont());
+  const int rowh = fm.height() + 1;
+
   for (int i = 0; i < rows; i++)
-    setRowHeight(i, 24);
+    setRowHeight(i, rowh);
 
   u32 pc = PowerPC::ppcState.pc;
 
@@ -110,8 +124,8 @@ void CodeViewWidget::Update()
 
   for (int i = 0; i < rowCount(); i++)
   {
-    u32 addr = m_address - ((rowCount() / 2) * 4) + i * 4;
-    u32 color = PowerPC::debug_interface.GetColor(addr);
+    const u32 addr = m_address - ((rowCount() / 2) * 4) + i * 4;
+    const u32 color = PowerPC::debug_interface.GetColor(addr);
     auto* bp_item = new QTableWidgetItem;
     auto* addr_item = new QTableWidgetItem(QStringLiteral("%1").arg(addr, 8, 16, QLatin1Char('0')));
 
@@ -122,9 +136,17 @@ void CodeViewWidget::Update()
     std::string param = (split == std::string::npos ? "" : disas.substr(split + 1));
     std::string desc = PowerPC::debug_interface.GetDescription(addr);
 
-    auto* ins_item = new QTableWidgetItem(QString::fromStdString(ins));
-    auto* param_item = new QTableWidgetItem(QString::fromStdString(param));
-    auto* description_item = new QTableWidgetItem(QString::fromStdString(desc));
+    // Adds whitespace and a minimum size to ins and param. Helps to prevent frequent resizing while
+    // scrolling.
+    const QString ins_formatted =
+        QStringLiteral("%1").arg(QString::fromStdString(ins), -7, QLatin1Char(' '));
+    const QString param_formatted =
+        QStringLiteral("%1").arg(QString::fromStdString(param), -19, QLatin1Char(' '));
+    const QString desc_formatted = QStringLiteral("%1   ").arg(QString::fromStdString(desc));
+
+    auto* ins_item = new QTableWidgetItem(ins_formatted);
+    auto* param_item = new QTableWidgetItem(param_formatted);
+    auto* description_item = new QTableWidgetItem(desc_formatted);
 
     for (auto* item : {bp_item, addr_item, ins_item, param_item, description_item})
     {
@@ -162,8 +184,9 @@ void CodeViewWidget::Update()
 
     if (PowerPC::debug_interface.IsBreakpoint(addr))
     {
-      bp_item->setData(Qt::DecorationRole,
-                       Resources::GetScaledThemeIcon("debugger_breakpoint").pixmap(QSize(24, 24)));
+      bp_item->setData(
+          Qt::DecorationRole,
+          Resources::GetScaledThemeIcon("debugger_breakpoint").pixmap(QSize(rowh - 2, rowh - 2)));
     }
 
     setItem(i, 0, bp_item);
@@ -179,8 +202,6 @@ void CodeViewWidget::Update()
   }
 
   resizeColumnsToContents();
-  setColumnWidth(0, 24 + 5);
-
   g_symbolDB.FillInCallers();
 
   repaint();
@@ -401,7 +422,7 @@ void CodeViewWidget::OnSelectionChanged()
   }
   else if (!styleSheet().isEmpty())
   {
-    setStyleSheet(QStringLiteral(""));
+    setStyleSheet(QString{});
   }
 }
 
@@ -548,6 +569,11 @@ void CodeViewWidget::mousePressEvent(QMouseEvent* event)
   default:
     break;
   }
+}
+
+void CodeViewWidget::showEvent(QShowEvent* event)
+{
+  Update();
 }
 
 void CodeViewWidget::ToggleBreakpoint()

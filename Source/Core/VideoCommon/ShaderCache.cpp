@@ -70,6 +70,9 @@ void ShaderCache::Reload()
   ClosePipelineUIDCache();
   ClearCaches();
 
+  if (!CompileSharedPipelines())
+    PanicAlert("Failed to compile shared pipelines after reload.");
+
   if (g_ActiveConfig.bShaderCache)
     LoadCaches();
 
@@ -157,7 +160,7 @@ void ShaderCache::WaitForAsyncCompiler()
 
       ImGui::SetNextWindowSize(ImVec2(400.0f * scale, 50.0f * scale), ImGuiCond_Always);
       ImGui::SetNextWindowPosCenter(ImGuiCond_Always);
-      if (ImGui::Begin(GetStringT("Compiling Shaders").c_str(), nullptr,
+      if (ImGui::Begin(Common::GetStringT("Compiling Shaders").c_str(), nullptr,
                        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoInputs |
                            ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
                            ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoNav |
@@ -221,12 +224,12 @@ void ShaderCache::LoadShaderCache(T& cache, APIType api_type, const char* type, 
         switch (stage)
         {
         case ShaderStage::Vertex:
-          INCSTAT(stats.numVertexShadersCreated);
-          INCSTAT(stats.numVertexShadersAlive);
+          INCSTAT(g_stats.num_vertex_shaders_created);
+          INCSTAT(g_stats.num_vertex_shaders_alive);
           break;
         case ShaderStage::Pixel:
-          INCSTAT(stats.numPixelShadersCreated);
-          INCSTAT(stats.numPixelShadersAlive);
+          INCSTAT(g_stats.num_pixel_shaders_created);
+          INCSTAT(g_stats.num_pixel_shaders_alive);
           break;
         default:
           break;
@@ -369,10 +372,27 @@ void ShaderCache::ClearCaches()
   ClearShaderCache(m_uber_vs_cache);
   ClearShaderCache(m_uber_ps_cache);
 
-  SETSTAT(stats.numPixelShadersCreated, 0);
-  SETSTAT(stats.numPixelShadersAlive, 0);
-  SETSTAT(stats.numVertexShadersCreated, 0);
-  SETSTAT(stats.numVertexShadersAlive, 0);
+  m_screen_quad_vertex_shader.reset();
+  m_texture_copy_vertex_shader.reset();
+  m_efb_copy_vertex_shader.reset();
+  m_texcoord_geometry_shader.reset();
+  m_color_geometry_shader.reset();
+  m_texture_copy_pixel_shader.reset();
+  m_color_pixel_shader.reset();
+
+  m_efb_copy_to_vram_pipelines.clear();
+  m_efb_copy_to_ram_pipelines.clear();
+  m_copy_rgba8_pipeline.reset();
+  m_rgba8_stereo_copy_pipeline.reset();
+  for (auto& pipeline : m_palette_conversion_pipelines)
+    pipeline.reset();
+  m_texture_reinterpret_pipelines.clear();
+  m_texture_decoding_shaders.clear();
+
+  SETSTAT(g_stats.num_pixel_shaders_created, 0);
+  SETSTAT(g_stats.num_pixel_shaders_alive, 0);
+  SETSTAT(g_stats.num_vertex_shaders_created, 0);
+  SETSTAT(g_stats.num_vertex_shaders_alive, 0);
 }
 
 void ShaderCache::CompileMissingPipelines()
@@ -392,32 +412,32 @@ void ShaderCache::CompileMissingPipelines()
 
 std::unique_ptr<AbstractShader> ShaderCache::CompileVertexShader(const VertexShaderUid& uid) const
 {
-  ShaderCode source_code = GenerateVertexShaderCode(m_api_type, m_host_config, uid.GetUidData());
-  return g_renderer->CreateShaderFromSource(ShaderStage::Vertex, source_code.GetBuffer().c_str(),
-                                            source_code.GetBuffer().size());
+  const ShaderCode source_code =
+      GenerateVertexShaderCode(m_api_type, m_host_config, uid.GetUidData());
+  return g_renderer->CreateShaderFromSource(ShaderStage::Vertex, source_code.GetBuffer());
 }
 
 std::unique_ptr<AbstractShader>
 ShaderCache::CompileVertexUberShader(const UberShader::VertexShaderUid& uid) const
 {
-  ShaderCode source_code = UberShader::GenVertexShader(m_api_type, m_host_config, uid.GetUidData());
-  return g_renderer->CreateShaderFromSource(ShaderStage::Vertex, source_code.GetBuffer().c_str(),
-                                            source_code.GetBuffer().size());
+  const ShaderCode source_code =
+      UberShader::GenVertexShader(m_api_type, m_host_config, uid.GetUidData());
+  return g_renderer->CreateShaderFromSource(ShaderStage::Vertex, source_code.GetBuffer());
 }
 
 std::unique_ptr<AbstractShader> ShaderCache::CompilePixelShader(const PixelShaderUid& uid) const
 {
-  ShaderCode source_code = GeneratePixelShaderCode(m_api_type, m_host_config, uid.GetUidData());
-  return g_renderer->CreateShaderFromSource(ShaderStage::Pixel, source_code.GetBuffer().c_str(),
-                                            source_code.GetBuffer().size());
+  const ShaderCode source_code =
+      GeneratePixelShaderCode(m_api_type, m_host_config, uid.GetUidData());
+  return g_renderer->CreateShaderFromSource(ShaderStage::Pixel, source_code.GetBuffer());
 }
 
 std::unique_ptr<AbstractShader>
 ShaderCache::CompilePixelUberShader(const UberShader::PixelShaderUid& uid) const
 {
-  ShaderCode source_code = UberShader::GenPixelShader(m_api_type, m_host_config, uid.GetUidData());
-  return g_renderer->CreateShaderFromSource(ShaderStage::Pixel, source_code.GetBuffer().c_str(),
-                                            source_code.GetBuffer().size());
+  const ShaderCode source_code =
+      UberShader::GenPixelShader(m_api_type, m_host_config, uid.GetUidData());
+  return g_renderer->CreateShaderFromSource(ShaderStage::Pixel, source_code.GetBuffer());
 }
 
 const AbstractShader* ShaderCache::InsertVertexShader(const VertexShaderUid& uid,
@@ -434,8 +454,8 @@ const AbstractShader* ShaderCache::InsertVertexShader(const VertexShaderUid& uid
       if (!binary.empty())
         m_vs_cache.disk_cache.Append(uid, binary.data(), static_cast<u32>(binary.size()));
     }
-    INCSTAT(stats.numVertexShadersCreated);
-    INCSTAT(stats.numVertexShadersAlive);
+    INCSTAT(g_stats.num_vertex_shaders_created);
+    INCSTAT(g_stats.num_vertex_shaders_alive);
     entry.shader = std::move(shader);
   }
 
@@ -456,8 +476,8 @@ const AbstractShader* ShaderCache::InsertVertexUberShader(const UberShader::Vert
       if (!binary.empty())
         m_uber_vs_cache.disk_cache.Append(uid, binary.data(), static_cast<u32>(binary.size()));
     }
-    INCSTAT(stats.numVertexShadersCreated);
-    INCSTAT(stats.numVertexShadersAlive);
+    INCSTAT(g_stats.num_vertex_shaders_created);
+    INCSTAT(g_stats.num_vertex_shaders_alive);
     entry.shader = std::move(shader);
   }
 
@@ -478,8 +498,8 @@ const AbstractShader* ShaderCache::InsertPixelShader(const PixelShaderUid& uid,
       if (!binary.empty())
         m_ps_cache.disk_cache.Append(uid, binary.data(), static_cast<u32>(binary.size()));
     }
-    INCSTAT(stats.numPixelShadersCreated);
-    INCSTAT(stats.numPixelShadersAlive);
+    INCSTAT(g_stats.num_pixel_shaders_created);
+    INCSTAT(g_stats.num_pixel_shaders_alive);
     entry.shader = std::move(shader);
   }
 
@@ -500,8 +520,8 @@ const AbstractShader* ShaderCache::InsertPixelUberShader(const UberShader::Pixel
       if (!binary.empty())
         m_uber_ps_cache.disk_cache.Append(uid, binary.data(), static_cast<u32>(binary.size()));
     }
-    INCSTAT(stats.numPixelShadersCreated);
-    INCSTAT(stats.numPixelShadersAlive);
+    INCSTAT(g_stats.num_pixel_shaders_created);
+    INCSTAT(g_stats.num_pixel_shaders_alive);
     entry.shader = std::move(shader);
   }
 
@@ -510,9 +530,10 @@ const AbstractShader* ShaderCache::InsertPixelUberShader(const UberShader::Pixel
 
 const AbstractShader* ShaderCache::CreateGeometryShader(const GeometryShaderUid& uid)
 {
-  ShaderCode source_code = GenerateGeometryShaderCode(m_api_type, m_host_config, uid.GetUidData());
-  std::unique_ptr<AbstractShader> shader = g_renderer->CreateShaderFromSource(
-      ShaderStage::Geometry, source_code.GetBuffer().c_str(), source_code.GetBuffer().size());
+  const ShaderCode source_code =
+      GenerateGeometryShaderCode(m_api_type, m_host_config, uid.GetUidData());
+  std::unique_ptr<AbstractShader> shader =
+      g_renderer->CreateShaderFromSource(ShaderStage::Geometry, source_code.GetBuffer());
 
   auto& entry = m_gs_cache.shader_map[uid];
   entry.pending = false;
@@ -557,6 +578,13 @@ AbstractPipelineConfig ShaderCache::GetGXPipelineConfig(
   config.depth_state = depth_state;
   config.blending_state = blending_state;
   config.framebuffer_state = g_framebuffer_manager->GetEFBFramebufferState();
+
+  if (config.blending_state.logicopenable && !g_ActiveConfig.backend_info.bSupportsLogicOp)
+  {
+    WARN_LOG(VIDEO, "Approximating logic op with blending, this will produce incorrect rendering.");
+    config.blending_state.ApproximateLogicOpWithBlending();
+  }
+
   return config;
 }
 
@@ -1150,9 +1178,9 @@ const AbstractPipeline* ShaderCache::GetEFBCopyToRAMPipeline(const EFBCopyParams
   if (iter != m_efb_copy_to_ram_pipelines.end())
     return iter->second.get();
 
-  auto shader_code = TextureConversionShaderTiled::GenerateEncodingShader(uid, m_api_type);
-  auto shader =
-      g_renderer->CreateShaderFromSource(ShaderStage::Pixel, shader_code, std::strlen(shader_code));
+  const char* const shader_code =
+      TextureConversionShaderTiled::GenerateEncodingShader(uid, m_api_type);
+  const auto shader = g_renderer->CreateShaderFromSource(ShaderStage::Pixel, shader_code);
   if (!shader)
   {
     m_efb_copy_to_ram_pipelines.emplace(uid, nullptr);
@@ -1160,10 +1188,7 @@ const AbstractPipeline* ShaderCache::GetEFBCopyToRAMPipeline(const EFBCopyParams
   }
 
   AbstractPipelineConfig config = {};
-  config.vertex_format = nullptr;
   config.vertex_shader = m_screen_quad_vertex_shader.get();
-  config.geometry_shader =
-      UseGeometryShaderForEFBCopies() ? m_texcoord_geometry_shader.get() : nullptr;
   config.pixel_shader = shader.get();
   config.rasterization_state = RenderState::GetNoCullRasterizationState(PrimitiveType::Triangles);
   config.depth_state = RenderState::GetNoDepthTestingDepthState();
@@ -1254,6 +1279,44 @@ const AbstractPipeline* ShaderCache::GetPaletteConversionPipeline(TLUTFormat for
   return m_palette_conversion_pipelines[static_cast<size_t>(format)].get();
 }
 
+const AbstractPipeline* ShaderCache::GetTextureReinterpretPipeline(TextureFormat from_format,
+                                                                   TextureFormat to_format)
+{
+  const auto key = std::make_pair(from_format, to_format);
+  auto iter = m_texture_reinterpret_pipelines.find(key);
+  if (iter != m_texture_reinterpret_pipelines.end())
+    return iter->second.get();
+
+  std::string shader_source =
+      FramebufferShaderGen::GenerateTextureReinterpretShader(from_format, to_format);
+  if (shader_source.empty())
+  {
+    m_texture_reinterpret_pipelines.emplace(key, nullptr);
+    return nullptr;
+  }
+
+  std::unique_ptr<AbstractShader> shader =
+      g_renderer->CreateShaderFromSource(ShaderStage::Pixel, shader_source);
+  if (!shader)
+  {
+    m_texture_reinterpret_pipelines.emplace(key, nullptr);
+    return nullptr;
+  }
+
+  AbstractPipelineConfig config;
+  config.vertex_format = nullptr;
+  config.vertex_shader = m_screen_quad_vertex_shader.get();
+  config.geometry_shader = nullptr;
+  config.pixel_shader = shader.get();
+  config.rasterization_state = RenderState::GetNoCullRasterizationState(PrimitiveType::Triangles);
+  config.depth_state = RenderState::GetNoDepthTestingDepthState();
+  config.blending_state = RenderState::GetNoBlendingBlendState();
+  config.framebuffer_state = RenderState::GetRGBA8FramebufferState();
+  config.usage = AbstractPipelineUsage::Utility;
+  auto iiter = m_texture_reinterpret_pipelines.emplace(key, g_renderer->CreatePipeline(config));
+  return iiter.first->second.get();
+}
+
 const AbstractShader* ShaderCache::GetTextureDecodingShader(TextureFormat format,
                                                             TLUTFormat palette_format)
 {
@@ -1281,5 +1344,4 @@ const AbstractShader* ShaderCache::GetTextureDecodingShader(TextureFormat format
   auto iiter = m_texture_decoding_shaders.emplace(key, std::move(shader));
   return iiter.first->second.get();
 }
-
 }  // namespace VideoCommon

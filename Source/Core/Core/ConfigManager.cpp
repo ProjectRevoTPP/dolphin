@@ -19,6 +19,7 @@
 #include "Common/CommonTypes.h"
 #include "Common/Config/Config.h"
 #include "Common/FileUtil.h"
+#include "Common/IniFile.h"
 #include "Common/Logging/Log.h"
 #include "Common/MsgHandler.h"
 #include "Common/NandPaths.h"
@@ -34,7 +35,10 @@
 #include "Core/FifoPlayer/FifoDataFile.h"
 #include "Core/HLE/HLE.h"
 #include "Core/HW/DVD/DVDInterface.h"
+#include "Core/HW/EXI/EXI_Device.h"
 #include "Core/HW/SI/SI.h"
+#include "Core/HW/SI/SI_Device.h"
+#include "Core/Host.h"
 #include "Core/IOS/ES/ES.h"
 #include "Core/IOS/ES/Formats.h"
 #include "Core/PatchEngine.h"
@@ -45,7 +49,7 @@
 
 #include "DiscIO/Enums.h"
 #include "DiscIO/Volume.h"
-#include "DiscIO/WiiWad.h"
+#include "DiscIO/VolumeWad.h"
 
 SConfig* SConfig::m_Instance;
 
@@ -207,7 +211,7 @@ void SConfig::SaveCoreSettings(IniFile& ini)
   core->Set("AccurateNaNs", bAccurateNaNs);
   core->Set("EnableCheats", bEnableCheats);
   core->Set("SelectedLanguage", SelectedLanguage);
-  core->Set("OverrideGCLang", bOverrideGCLanguage);
+  core->Set("OverrideRegionSettings", bOverrideRegionSettings);
   core->Set("DPL2Decoder", bDPL2Decoder);
   core->Set("AudioLatency", iLatency);
   core->Set("AudioStretch", m_audio_stretch);
@@ -238,7 +242,6 @@ void SConfig::SaveCoreSettings(IniFile& ini)
   core->Set("PerfMapDir", m_perfDir);
   core->Set("EnableCustomRTC", bEnableCustomRTC);
   core->Set("CustomRTCValue", m_customRTCValue);
-  core->Set("EnableSignatureChecks", m_enable_signature_checks);
 }
 
 void SConfig::SaveMovieSettings(IniFile& ini)
@@ -482,7 +485,7 @@ void SConfig::LoadCoreSettings(IniFile& ini)
   core->Get("SyncOnSkipIdle", &bSyncGPUOnSkipIdleHack, true);
   core->Get("EnableCheats", &bEnableCheats, false);
   core->Get("SelectedLanguage", &SelectedLanguage, 0);
-  core->Get("OverrideGCLang", &bOverrideGCLanguage, false);
+  core->Get("OverrideRegionSettings", &bOverrideRegionSettings, false);
   core->Get("DPL2Decoder", &bDPL2Decoder, false);
   core->Get("AudioLatency", &iLatency, 20);
   core->Get("AudioStretch", &m_audio_stretch, false);
@@ -525,7 +528,6 @@ void SConfig::LoadCoreSettings(IniFile& ini)
   core->Get("EnableCustomRTC", &bEnableCustomRTC, false);
   // Default to seconds between 1.1.1970 and 1.1.2000
   core->Get("CustomRTCValue", &m_customRTCValue, 946684800);
-  core->Get("EnableSignatureChecks", &m_enable_signature_checks, true);
 }
 
 void SConfig::LoadMovieSettings(IniFile& ini)
@@ -646,7 +648,7 @@ void SConfig::LoadJitDebugSettings(IniFile& ini)
 
 void SConfig::ResetRunningGameMetadata()
 {
-  SetRunningGameMetadata("00000000", "", 0, 0, DiscIO::Country::Unknown);
+  SetRunningGameMetadata("00000000", "", 0, 0, DiscIO::Region::Unknown);
 }
 
 void SConfig::SetRunningGameMetadata(const DiscIO::Volume& volume,
@@ -656,17 +658,17 @@ void SConfig::SetRunningGameMetadata(const DiscIO::Volume& volume,
   {
     SetRunningGameMetadata(volume.GetGameID(), volume.GetGameTDBID(),
                            volume.GetTitleID().value_or(0), volume.GetRevision().value_or(0),
-                           volume.GetCountry());
+                           volume.GetRegion());
   }
   else
   {
     SetRunningGameMetadata(volume.GetGameID(partition), volume.GetGameTDBID(),
                            volume.GetTitleID(partition).value_or(0),
-                           volume.GetRevision(partition).value_or(0), volume.GetCountry());
+                           volume.GetRevision(partition).value_or(0), volume.GetRegion());
   }
 }
 
-void SConfig::SetRunningGameMetadata(const IOS::ES::TMDReader& tmd)
+void SConfig::SetRunningGameMetadata(const IOS::ES::TMDReader& tmd, DiscIO::Platform platform)
 {
   const u64 tmd_title_id = tmd.GetTitleId();
 
@@ -674,19 +676,17 @@ void SConfig::SetRunningGameMetadata(const IOS::ES::TMDReader& tmd)
   // the disc header instead of the TMD. They can differ.
   // (IOS HLE ES calls us with a TMDReader rather than a volume when launching
   // a disc game, because ES has no reason to be accessing the disc directly.)
-  if (!DVDInterface::UpdateRunningGameMetadata(tmd_title_id))
+  if (platform == DiscIO::Platform::WiiWAD ||
+      !DVDInterface::UpdateRunningGameMetadata(tmd_title_id))
   {
     // If not launching a disc game, just read everything from the TMD.
-    const DiscIO::Country country =
-        DiscIO::CountryCodeToCountry(static_cast<u8>(tmd_title_id), DiscIO::Platform::WiiWAD,
-                                     tmd.GetRegion(), tmd.GetTitleVersion());
     SetRunningGameMetadata(tmd.GetGameID(), tmd.GetGameTDBID(), tmd_title_id, tmd.GetTitleVersion(),
-                           country);
+                           tmd.GetRegion());
   }
 }
 
 void SConfig::SetRunningGameMetadata(const std::string& game_id, const std::string& gametdb_id,
-                                     u64 title_id, u16 revision, DiscIO::Country country)
+                                     u64 title_id, u16 revision, DiscIO::Region region)
 {
   const bool was_changed = m_game_id != game_id || m_gametdb_id != gametdb_id ||
                            m_title_id != title_id || m_revision != revision;
@@ -719,11 +719,10 @@ void SConfig::SetRunningGameMetadata(const std::string& game_id, const std::stri
   }
 
   const Core::TitleDatabase title_database;
-  const DiscIO::Language language = !bWii && country == DiscIO::Country::Japan ?
-                                        DiscIO::Language::Japanese :
-                                        GetCurrentLanguage(bWii);
+  const DiscIO::Language language = GetLanguageAdjustedForRegion(bWii, region);
   m_title_description = title_database.Describe(m_gametdb_id, language);
   NOTICE_LOG(CORE, "Active title: %s", m_title_description.c_str());
+  Host_TitleChanged();
 
   Config::AddLayer(ConfigLoaders::GenerateGlobalGameConfigLoader(game_id, revision));
   Config::AddLayer(ConfigLoaders::GenerateLocalGameConfigLoader(game_id, revision));
@@ -731,12 +730,16 @@ void SConfig::SetRunningGameMetadata(const std::string& game_id, const std::stri
   if (Core::IsRunning())
   {
     // TODO: have a callback mechanism for title changes?
-    g_symbolDB.Clear();
+    if (!g_symbolDB.IsEmpty())
+    {
+      g_symbolDB.Clear();
+      Host_NotifyMapLoaded();
+    }
     CBoot::LoadMapFromFilename();
     HLE::Reload();
     PatchEngine::Reload();
     HiresTexture::Update();
-    DolphinAnalytics::Instance()->ReportGameStart();
+    DolphinAnalytics::Instance().ReportGameStart();
   }
 }
 
@@ -773,7 +776,7 @@ void SConfig::LoadDefaults()
   bFastDiscSpeed = false;
   bEnableMemcardSdWriting = true;
   SelectedLanguage = 0;
-  bOverrideGCLanguage = false;
+  bOverrideRegionSettings = false;
   bWii = false;
   bDPL2Decoder = false;
   iLatency = 20;
@@ -879,9 +882,9 @@ struct SetGameMetadata
     return true;
   }
 
-  bool operator()(const DiscIO::WiiWAD& wad) const
+  bool operator()(const DiscIO::VolumeWAD& wad) const
   {
-    if (!wad.IsValid() || !wad.GetTMD().IsValid())
+    if (!wad.GetTMD().IsValid())
     {
       PanicAlertT("This WAD is not valid.");
       return false;
@@ -893,7 +896,7 @@ struct SetGameMetadata
     }
 
     const IOS::ES::TMDReader& tmd = wad.GetTMD();
-    config->SetRunningGameMetadata(tmd);
+    config->SetRunningGameMetadata(tmd, DiscIO::Platform::WiiWAD);
     config->bWii = true;
     *region = tmd.GetRegion();
     return true;
@@ -908,7 +911,7 @@ struct SetGameMetadata
       PanicAlertT("This title cannot be booted.");
       return false;
     }
-    config->SetRunningGameMetadata(tmd);
+    config->SetRunningGameMetadata(tmd, DiscIO::Platform::WiiWAD);
     config->bWii = true;
     *region = tmd.GetRegion();
     return true;
@@ -983,6 +986,40 @@ DiscIO::Language SConfig::GetCurrentLanguage(bool wii) const
   // Get rid of invalid values (probably doesn't matter, but might as well do it)
   if (language > DiscIO::Language::Unknown || language < DiscIO::Language::Japanese)
     language = DiscIO::Language::Unknown;
+  return language;
+}
+
+DiscIO::Language SConfig::GetLanguageAdjustedForRegion(bool wii, DiscIO::Region region) const
+{
+  const DiscIO::Language language = GetCurrentLanguage(wii);
+
+  if (!wii && region == DiscIO::Region::NTSC_K)
+    region = DiscIO::Region::NTSC_J;  // NTSC-K only exists on Wii, so use a fallback
+
+  if (!wii && region == DiscIO::Region::NTSC_J && language == DiscIO::Language::English)
+    return DiscIO::Language::Japanese;  // English and Japanese both use the value 0 in GC SRAM
+
+  if (!bOverrideRegionSettings)
+  {
+    if (region == DiscIO::Region::NTSC_J)
+      return DiscIO::Language::Japanese;
+
+    if (region == DiscIO::Region::NTSC_U && language != DiscIO::Language::English &&
+        (!wii || (language != DiscIO::Language::French && language != DiscIO::Language::Spanish)))
+    {
+      return DiscIO::Language::English;
+    }
+
+    if (region == DiscIO::Region::PAL &&
+        (language < DiscIO::Language::English || language > DiscIO::Language::Dutch))
+    {
+      return DiscIO::Language::English;
+    }
+
+    if (region == DiscIO::Region::NTSC_K)
+      return DiscIO::Language::Korean;
+  }
+
   return language;
 }
 

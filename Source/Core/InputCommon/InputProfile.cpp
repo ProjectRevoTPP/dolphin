@@ -32,7 +32,7 @@ std::vector<std::string> GetProfilesFromSetting(const std::string& setting, cons
   std::vector<std::string> result;
   for (const std::string& setting_choice : setting_choices)
   {
-    const std::string path = root + StripSpaces(setting_choice);
+    const std::string path = root + std::string(StripSpaces(setting_choice));
     if (File::IsDirectory(path))
     {
       const auto files_under_directory = Common::DoFileSearch({path}, {".ini"}, true);
@@ -207,4 +207,4 @@ void ProfileCycler::PreviousWiimoteProfileForGame(int controller_index)
   CycleProfileForGame(CycleDirection::Backward, Wiimote::GetConfig(), m_wiimote_profile_index,
                       GetWiimoteInputProfilesForGame(controller_index), controller_index);
 }
-}
+}  // namespace InputProfile

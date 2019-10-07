@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <cstring>
 #include <mbedtls/md5.h>
+#include <mbedtls/sha1.h>
 #include <memory>
 #include <optional>
 #include <string>
@@ -91,7 +92,7 @@ public:
     header.banner[7] &= ~1;
 
     Md5 md5_calc;
-    mbedtls_md5(reinterpret_cast<const u8*>(&header), sizeof(Header), md5_calc.data());
+    mbedtls_md5_ret(reinterpret_cast<const u8*>(&header), sizeof(Header), md5_calc.data());
     header.md5 = std::move(md5_calc);
     return header;
   }
@@ -263,7 +264,7 @@ public:
     Md5 md5_file = header.md5;
     header.md5 = s_md5_blanker;
     Md5 md5_calc;
-    mbedtls_md5(reinterpret_cast<const u8*>(&header), sizeof(Header), md5_calc.data());
+    mbedtls_md5_ret(reinterpret_cast<const u8*>(&header), sizeof(Header), md5_calc.data());
     if (md5_file != md5_calc)
     {
       ERROR_LOG(CONSOLE, "MD5 mismatch\n %016" PRIx64 "%016" PRIx64 " != %016" PRIx64 "%016" PRIx64,
@@ -403,17 +404,21 @@ private:
       return false;
 
     // Read data to sign.
-    const u32 data_size = bk_header->size_of_files + sizeof(BkHeader);
-    auto data = std::make_unique<u8[]>(data_size);
-    m_file.Seek(sizeof(Header), SEEK_SET);
-    if (!m_file.ReadBytes(data.get(), data_size))
-      return false;
+    std::array<u8, 20> data_sha1;
+    {
+      const u32 data_size = bk_header->size_of_files + sizeof(BkHeader);
+      auto data = std::make_unique<u8[]>(data_size);
+      m_file.Seek(sizeof(Header), SEEK_SET);
+      if (!m_file.ReadBytes(data.get(), data_size))
+        return false;
+      mbedtls_sha1_ret(data.get(), data_size, data_sha1.data());
+    }
 
     // Sign the data.
     IOS::CertECC ap_cert;
     Common::ec::Signature ap_sig;
-    m_iosc.Sign(ap_sig.data(), reinterpret_cast<u8*>(&ap_cert), Titles::SYSTEM_MENU, data.get(),
-                data_size);
+    m_iosc.Sign(ap_sig.data(), reinterpret_cast<u8*>(&ap_cert), Titles::SYSTEM_MENU,
+                data_sha1.data(), static_cast<u32>(data_sha1.size()));
 
     // Write signatures.
     if (!m_file.Seek(0, SEEK_END))

@@ -8,7 +8,7 @@
 
 namespace Null
 {
-class Renderer : public ::Renderer
+class Renderer final : public ::Renderer
 {
 public:
   Renderer();
@@ -22,8 +22,8 @@ public:
   std::unique_ptr<AbstractFramebuffer>
   CreateFramebuffer(AbstractTexture* color_attachment, AbstractTexture* depth_attachment) override;
 
-  std::unique_ptr<AbstractShader> CreateShaderFromSource(ShaderStage stage, const char* source,
-                                                         size_t length) override;
+  std::unique_ptr<AbstractShader> CreateShaderFromSource(ShaderStage stage,
+                                                         std::string_view source) override;
   std::unique_ptr<AbstractShader> CreateShaderFromBinary(ShaderStage stage, const void* data,
                                                          size_t length) override;
   std::unique_ptr<NativeVertexFormat>

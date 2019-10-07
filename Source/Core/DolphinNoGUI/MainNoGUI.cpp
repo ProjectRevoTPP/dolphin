@@ -105,6 +105,13 @@ void Host_UpdateProgressDialog(const char* caption, int position, int total)
 {
 }
 
+void Host_TitleChanged()
+{
+#ifdef USE_DISCORD_PRESENCE
+  Discord::UpdateDiscordPresence();
+#endif
+}
+
 static std::unique_ptr<Platform> GetPlatform(const optparse::Values& options)
 {
   std::string platform_name = static_cast<const char*>(options.get("platform"));
@@ -195,7 +202,7 @@ int main(int argc, char* argv[])
   sigaction(SIGINT, &sa, nullptr);
   sigaction(SIGTERM, &sa, nullptr);
 
-  DolphinAnalytics::Instance()->ReportDolphinStart("nogui");
+  DolphinAnalytics::Instance().ReportDolphinStart("nogui");
 
   if (!BootManager::BootCore(std::move(boot), s_platform->GetWindowSystemInfo()))
   {

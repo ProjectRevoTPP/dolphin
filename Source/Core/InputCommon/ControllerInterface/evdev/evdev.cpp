@@ -2,6 +2,7 @@
 // Licensed under GPLv2+
 // Refer to the license.txt file included.
 
+#include <algorithm>
 #include <cstring>
 #include <fcntl.h>
 #include <libudev.h>
@@ -22,9 +23,7 @@
 #include "InputCommon/ControllerInterface/ControllerInterface.h"
 #include "InputCommon/ControllerInterface/evdev/evdev.h"
 
-namespace ciface
-{
-namespace evdev
+namespace ciface::evdev
 {
 static std::thread s_hotplug_thread;
 static Common::Flag s_hotplug_thread_running;
@@ -314,7 +313,7 @@ std::string evdevDevice::Button::GetName() const
   {
     const char* name = libevdev_event_code_get_name(EV_KEY, m_code);
     if (name)
-      return StripSpaces(name);
+      return std::string(StripSpaces(name));
   }
   // But controllers use codes above 0x100, and the standard label often doesn't match.
   // We are better off with Button 0 and so on.
@@ -498,5 +497,4 @@ evdevDevice::Effect::~Effect()
   m_effect.type = DISABLED_EFFECT_TYPE;
   UpdateEffect();
 }
-}  // namespace evdev
-}  // namespace ciface
+}  // namespace ciface::evdev

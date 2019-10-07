@@ -64,8 +64,6 @@ CodeWidget::CodeWidget(QWidget* parent) : QDockWidget(parent)
       settings.value(QStringLiteral("codewidget/codesplitter")).toByteArray());
   m_box_splitter->restoreState(
       settings.value(QStringLiteral("codewidget/boxsplitter")).toByteArray());
-
-  Update();
 }
 
 CodeWidget::~CodeWidget()
@@ -81,6 +79,11 @@ CodeWidget::~CodeWidget()
 void CodeWidget::closeEvent(QCloseEvent*)
 {
   Settings::Instance().SetCodeVisible(false);
+}
+
+void CodeWidget::showEvent(QShowEvent* event)
+{
+  Update();
 }
 
 void CodeWidget::CreateWidgets()
@@ -155,12 +158,11 @@ void CodeWidget::ConnectWidgets()
   connect(m_search_address, &QLineEdit::textChanged, this, &CodeWidget::OnSearchAddress);
   connect(m_search_symbols, &QLineEdit::textChanged, this, &CodeWidget::OnSearchSymbols);
 
-  connect(m_symbols_list, &QListWidget::itemClicked, this, &CodeWidget::OnSelectSymbol);
-  connect(m_callstack_list, &QListWidget::itemSelectionChanged, this,
-          &CodeWidget::OnSelectCallstack);
-  connect(m_function_calls_list, &QListWidget::itemSelectionChanged, this,
+  connect(m_symbols_list, &QListWidget::itemPressed, this, &CodeWidget::OnSelectSymbol);
+  connect(m_callstack_list, &QListWidget::itemPressed, this, &CodeWidget::OnSelectCallstack);
+  connect(m_function_calls_list, &QListWidget::itemPressed, this,
           &CodeWidget::OnSelectFunctionCalls);
-  connect(m_function_callers_list, &QListWidget::itemSelectionChanged, this,
+  connect(m_function_callers_list, &QListWidget::itemPressed, this,
           &CodeWidget::OnSelectFunctionCallers);
 
   connect(m_code_view, &CodeViewWidget::SymbolsChanged, this, &CodeWidget::UpdateSymbols);
@@ -266,6 +268,9 @@ void CodeWidget::SetAddress(u32 address, CodeViewWidget::SetAddressUpdate update
 
 void CodeWidget::Update()
 {
+  if (!isVisible())
+    return;
+
   const Common::Symbol* symbol = g_symbolDB.GetSymbolFromAddr(m_code_view->GetAddress());
 
   UpdateCallstack();
@@ -309,9 +314,9 @@ void CodeWidget::UpdateCallstack()
 
 void CodeWidget::UpdateSymbols()
 {
-  QString selection = m_symbols_list->selectedItems().isEmpty() ?
-                          QStringLiteral("") :
-                          m_symbols_list->selectedItems()[0]->text();
+  const QString selection = m_symbols_list->selectedItems().isEmpty() ?
+                                QString{} :
+                                m_symbols_list->selectedItems()[0]->text();
   m_symbols_list->clear();
 
   for (const auto& symbol : g_symbolDB.Symbols())

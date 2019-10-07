@@ -32,8 +32,8 @@ constexpr int SLIDER_TICK_COUNT = 100;
 // Escape ampersands and remove ticks
 static QString ToDisplayString(QString&& string)
 {
-  return string.replace(QStringLiteral("&"), QStringLiteral("&&"))
-      .replace(QStringLiteral("`"), QStringLiteral(""));
+  return string.replace(QLatin1Char{'&'}, QStringLiteral("&&"))
+      .replace(QLatin1Char{'`'}, QString{});
 }
 
 bool MappingButton::IsInput() const
@@ -49,7 +49,7 @@ MappingButton::MappingButton(MappingWidget* parent, ControlReference* ref, bool 
   setFixedHeight(minimumSizeHint().height());
 
   // Make sure that long entries don't throw our layout out of whack.
-  setFixedWidth(112);
+  setFixedWidth(WIDGET_MAX_WIDTH);
 
   setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
 
@@ -125,16 +125,11 @@ void MappingButton::UpdateIndicator()
   const auto state = m_reference->State();
 
   QFont f = m_parent->font();
-  QPalette p = m_parent->palette();
 
   if (state > ControllerEmu::Buttons::ACTIVATION_THRESHOLD)
-  {
     f.setBold(true);
-    p.setColor(QPalette::ButtonText, Qt::red);
-  }
 
   setFont(f);
-  setPalette(p);
 }
 
 void MappingButton::ConfigChanged()

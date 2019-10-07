@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "VideoCommon/VideoCommon.h"
+#include "Common/MathUtil.h"
 
 struct BPCmd;
 
@@ -23,4 +23,4 @@ void SetBlendMode();
 void ClearScreen(const MathUtil::Rectangle<int>& rc);
 void OnPixelFormatChange();
 void SetInterlacingMode(const BPCmd& bp);
-}
+}  // namespace BPFunctions

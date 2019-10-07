@@ -27,6 +27,8 @@ enum class GuitarGroup;
 enum class DrumsGroup;
 enum class TurntableGroup;
 enum class UDrawTabletGroup;
+enum class DrawsomeTabletGroup;
+enum class TaTaConGroup;
 }  // namespace WiimoteEmu
 
 enum
@@ -80,6 +82,9 @@ ControllerEmu::ControlGroup* GetGuitarGroup(int number, WiimoteEmu::GuitarGroup 
 ControllerEmu::ControlGroup* GetDrumsGroup(int number, WiimoteEmu::DrumsGroup group);
 ControllerEmu::ControlGroup* GetTurntableGroup(int number, WiimoteEmu::TurntableGroup group);
 ControllerEmu::ControlGroup* GetUDrawTabletGroup(int number, WiimoteEmu::UDrawTabletGroup group);
+ControllerEmu::ControlGroup* GetDrawsomeTabletGroup(int number,
+                                                    WiimoteEmu::DrawsomeTabletGroup group);
+ControllerEmu::ControlGroup* GetTaTaConGroup(int number, WiimoteEmu::TaTaConGroup group);
 
 void ControlChannel(int number, u16 channel_id, const void* data, u32 size);
 void InterruptChannel(int number, u16 channel_id, const void* data, u32 size);

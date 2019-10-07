@@ -46,8 +46,14 @@ bool Layer::Exists(const ConfigLocation& location) const
 bool Layer::DeleteKey(const ConfigLocation& location)
 {
   m_is_dirty = true;
-  bool had_value = m_map[location].has_value();
-  m_map[location].reset();
+  bool had_value = false;
+  const auto iter = m_map.find(location);
+  if (iter != m_map.end() && iter->second.has_value())
+  {
+    iter->second.reset();
+    had_value = true;
+  }
+
   return had_value;
 }
 
@@ -97,4 +103,4 @@ const LayerMap& Layer::GetLayerMap() const
 {
   return m_map;
 }
-}
+}  // namespace Config

@@ -30,7 +30,7 @@ extern const ConfigInfo<bool> MAIN_SYNC_ON_SKIP_IDLE;
 extern const ConfigInfo<std::string> MAIN_DEFAULT_ISO;
 extern const ConfigInfo<bool> MAIN_ENABLE_CHEATS;
 extern const ConfigInfo<int> MAIN_GC_LANGUAGE;
-extern const ConfigInfo<bool> MAIN_OVERRIDE_GC_LANGUAGE;
+extern const ConfigInfo<bool> MAIN_OVERRIDE_REGION_SETTINGS;
 extern const ConfigInfo<bool> MAIN_DPL2_DECODER;
 extern const ConfigInfo<int> MAIN_AUDIO_LATENCY;
 extern const ConfigInfo<bool> MAIN_AUDIO_STRETCH;
@@ -76,8 +76,6 @@ extern const ConfigInfo<std::string> MAIN_GPU_DETERMINISM_MODE;
 extern const ConfigInfo<std::string> MAIN_PERF_MAP_DIR;
 extern const ConfigInfo<bool> MAIN_CUSTOM_RTC_ENABLE;
 extern const ConfigInfo<u32> MAIN_CUSTOM_RTC_VALUE;
-extern const ConfigInfo<bool> MAIN_ENABLE_SIGNATURE_CHECKS;
-extern const ConfigInfo<bool> MAIN_REDUCE_POLLING_RATE;
 extern const ConfigInfo<bool> MAIN_AUTO_DISC_CHANGE;
 
 // Main.DSP

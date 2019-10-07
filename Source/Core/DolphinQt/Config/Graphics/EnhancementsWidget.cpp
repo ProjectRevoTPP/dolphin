@@ -20,6 +20,7 @@
 #include "DolphinQt/Config/Graphics/GraphicsSlider.h"
 #include "DolphinQt/Config/Graphics/GraphicsWindow.h"
 #include "DolphinQt/Config/Graphics/PostProcessingConfigWindow.h"
+#include "DolphinQt/QtUtils/ModalMessageBox.h"
 #include "DolphinQt/Settings.h"
 
 #include "UICommon/VideoUtils.h"
@@ -109,9 +110,9 @@ void EnhancementsWidget::CreateWidgets()
   auto* stereoscopy_layout = new QGridLayout();
   stereoscopy_box->setLayout(stereoscopy_layout);
 
-  m_3d_mode = new GraphicsChoice(
-      {tr("Off"), tr("Side-by-Side"), tr("Top-and-Bottom"), tr("Anaglyph"), tr("HDMI 3D")},
-      Config::GFX_STEREO_MODE);
+  m_3d_mode = new GraphicsChoice({tr("Off"), tr("Side-by-Side"), tr("Top-and-Bottom"),
+                                  tr("Anaglyph"), tr("HDMI 3D"), tr("Passive")},
+                                 Config::GFX_STEREO_MODE);
   m_3d_depth = new GraphicsSlider(0, 100, Config::GFX_STEREO_DEPTH);
   m_3d_convergence = new GraphicsSlider(0, 200, Config::GFX_STEREO_CONVERGENCE, 100);
   m_3d_swap_eyes = new GraphicsBool(tr("Swap Eyes"), Config::GFX_STEREO_SWAP_EYES);
@@ -145,20 +146,25 @@ void EnhancementsWidget::ConnectWidgets()
 
             SaveSettings();
           });
-  connect(m_configure_pp_effect, &QPushButton::pressed, this,
+  connect(m_configure_pp_effect, &QPushButton::clicked, this,
           &EnhancementsWidget::ConfigurePostProcessingShader);
 }
 
 void EnhancementsWidget::LoadPPShaders()
 {
-  const bool anaglyph = g_Config.stereo_mode == StereoMode::Anaglyph;
-  std::vector<std::string> shaders = anaglyph ?
-                                         VideoCommon::PostProcessing::GetAnaglyphShaderList() :
-                                         VideoCommon::PostProcessing::GetShaderList();
+  std::vector<std::string> shaders = VideoCommon::PostProcessing::GetShaderList();
+  if (g_Config.stereo_mode == StereoMode::Anaglyph)
+  {
+    shaders = VideoCommon::PostProcessing::GetAnaglyphShaderList();
+  }
+  else if (g_Config.stereo_mode == StereoMode::Passive)
+  {
+    shaders = VideoCommon::PostProcessing::GetPassiveShaderList();
+  }
 
   m_pp_effect->clear();
 
-  if (!anaglyph)
+  if (g_Config.stereo_mode != StereoMode::Anaglyph && g_Config.stereo_mode != StereoMode::Passive)
     m_pp_effect->addItem(tr("(off)"));
 
   auto selected_shader = Config::Get(Config::GFX_ENHANCE_POST_SHADER);
@@ -175,14 +181,16 @@ void EnhancementsWidget::LoadPPShaders()
     }
   }
 
-  if (anaglyph && !found)
+  if (g_Config.stereo_mode == StereoMode::Anaglyph && !found)
     m_pp_effect->setCurrentIndex(m_pp_effect->findText(QStringLiteral("dubois")));
+  else if (g_Config.stereo_mode == StereoMode::Passive && !found)
+    m_pp_effect->setCurrentIndex(m_pp_effect->findText(QStringLiteral("horizontal")));
 
   const bool supports_postprocessing = g_Config.backend_info.bSupportsPostProcessing;
   m_pp_effect->setEnabled(supports_postprocessing);
 
   m_pp_effect->setToolTip(supports_postprocessing ?
-                              QStringLiteral("") :
+                              QString{} :
                               tr("%1 doesn't support this feature.")
                                   .arg(tr(g_video_backend->GetDisplayName().c_str())));
 
@@ -218,17 +226,7 @@ void EnhancementsWidget::LoadSettings()
   LoadPPShaders();
 
   // Stereoscopy
-  bool supports_stereoscopy = g_Config.backend_info.bSupportsGeometryShaders;
-  bool supports_3dvision = g_Config.backend_info.bSupports3DVision;
-
-  bool has_3dvision = m_3d_mode->count() == 6;
-
-  if (has_3dvision && !supports_3dvision)
-    m_3d_mode->removeItem(5);
-
-  if (!has_3dvision && supports_3dvision)
-    m_3d_mode->addItem(tr("NVIDIA 3D Vision"));
-
+  const bool supports_stereoscopy = g_Config.backend_info.bSupportsGeometryShaders;
   m_3d_mode->setEnabled(supports_stereoscopy);
   m_3d_convergence->setEnabled(supports_stereoscopy);
   m_3d_depth->setEnabled(supports_stereoscopy);
@@ -260,8 +258,9 @@ void EnhancementsWidget::SaveSettings()
   Config::SetBaseOrCurrent(Config::GFX_SSAA, is_ssaa);
 
   const bool anaglyph = g_Config.stereo_mode == StereoMode::Anaglyph;
+  const bool passive = g_Config.stereo_mode == StereoMode::Passive;
   Config::SetBaseOrCurrent(Config::GFX_ENHANCE_POST_SHADER,
-                           (!anaglyph && m_pp_effect->currentIndex() == 0) ?
+                           (!anaglyph && !passive && m_pp_effect->currentIndex() == 0) ?
                                "(off)" :
                                m_pp_effect->currentText().toStdString());
 
@@ -282,8 +281,8 @@ void EnhancementsWidget::SaveSettings()
 void EnhancementsWidget::AddDescriptions()
 {
   static const char TR_INTERNAL_RESOLUTION_DESCRIPTION[] =
-      QT_TR_NOOP("Controls the rendering resolution. A high resolution greatly improves visual "
-                 "quality, but also greatly increases GPU load and can cause issues in "
+      QT_TR_NOOP("Controls the rendering resolution.\n\nA high resolution greatly improves "
+                 "visual quality, but also greatly increases GPU load and can cause issues in "
                  "certain games. Generally speaking, the lower the internal resolution, the "
                  "better performance will be.\n\nIf unsure, select Native.");
 
@@ -304,13 +303,13 @@ void EnhancementsWidget::AddDescriptions()
 
   static const char TR_SCALED_EFB_COPY_DESCRIPTION[] =
       QT_TR_NOOP("Greatly increases the quality of textures generated using render-to-texture "
-                 "effects. Slightly increases GPU load and causes relatively few graphical issues. "
-                 "Raising the internal resolution will improve the effect of this setting.\n\nIf "
-                 "unsure, leave this checked.");
+                 "effects.\n\nSlightly increases GPU load and causes relatively few graphical "
+                 "issues. Raising the internal resolution will improve the effect of this setting. "
+                 "\n\nIf unsure, leave this checked.");
   static const char TR_PER_PIXEL_LIGHTING_DESCRIPTION[] = QT_TR_NOOP(
       "Calculates lighting of 3D objects per-pixel rather than per-vertex, smoothing out the "
-      "appearance of lit polygons and making individual triangles less noticeable.\nRarely causes "
-      "slowdowns or graphical issues.\n\nIf unsure, leave this unchecked.");
+      "appearance of lit polygons and making individual triangles less noticeable.\n\nRarely "
+      "causes slowdowns or graphical issues.\n\nIf unsure, leave this unchecked.");
   static const char TR_WIDESCREEN_HACK_DESCRIPTION[] = QT_TR_NOOP(
       "Forces the game to output graphics for any aspect ratio. Use with \"Aspect Ratio\" set to "
       "\"Force 16:9\" to force 4:3-only games to run at 16:9.\n\nRarely produces good results and "
@@ -322,10 +321,11 @@ void EnhancementsWidget::AddDescriptions()
                  "emulation.\n\nIf unsure, leave this unchecked.");
   static const char TR_3D_MODE_DESCRIPTION[] = QT_TR_NOOP(
       "Selects the stereoscopic 3D mode. Stereoscopy allows a better feeling "
-      "of depth if the necessary hardware is present.\n\nSide-by-Side and Top-and-Bottom are "
+      "of depth if the necessary hardware is present. Heavily decreases "
+      "emulation speed and sometimes causes issues.\n\nSide-by-Side and Top-and-Bottom are "
       "used by most 3D TVs.\nAnaglyph is used for Red-Cyan colored glasses.\nHDMI 3D is "
-      "used when the monitor supports 3D display resolutions.\n\nHeavily decreases "
-      "emulation speed and sometimes causes issues.\n\nIf unsure, select Off.");
+      "used when the monitor supports 3D display resolutions.\nPassive is another type of 3D "
+      "used by some TVs.\n\nIf unsure, select Off.");
   static const char TR_3D_DEPTH_DESCRIPTION[] = QT_TR_NOOP(
       "Controls the separation distance between the virtual cameras. \n\nA higher "
       "value creates a stronger feeling of depth while a lower value is more comfortable.");
@@ -338,12 +338,12 @@ void EnhancementsWidget::AddDescriptions()
                  "mode.\n\nIf unsure, leave this unchecked.");
   static const char TR_FORCE_24BIT_DESCRIPTION[] =
       QT_TR_NOOP("Forces the game to render the RGB color channels in 24-bit, thereby increasing "
-                 "quality by reducing color banding. Has no impact on performance and causes "
+                 "quality by reducing color banding.\n\nHas no impact on performance and causes "
                  "few graphical issues.\n\nIf unsure, leave this checked.");
   static const char TR_FORCE_TEXTURE_FILTERING_DESCRIPTION[] =
       QT_TR_NOOP("Filters all textures, including any that the game explicitly set as "
-                 "unfiltered.\nMay improve quality of certain textures in some games, but will "
-                 "cause issues in others.\n\nIf unsure, leave this unchecked.");
+                 "unfiltered.\n\nMay improve quality of certain textures in some games, but "
+                 "will cause issues in others.\n\nIf unsure, leave this unchecked.");
   static const char TR_DISABLE_COPY_FILTER_DESCRIPTION[] =
       QT_TR_NOOP("Disables the blending of adjacent rows when copying the EFB. This is known in "
                  "some games as \"deflickering\" or \"smoothing\". \n\nDisabling the filter has no "

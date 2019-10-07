@@ -49,7 +49,6 @@ bool FifoPlayer::Open(const std::string& filename)
 
   if (m_File)
   {
-    FifoAnalyzer::Init();
     FifoPlaybackAnalyzer::AnalyzeFrames(m_File.get(), m_FrameInfo);
 
     m_FrameRangeEnd = m_File->GetFrameCount();
@@ -167,6 +166,17 @@ std::unique_ptr<CPUCoreBase> FifoPlayer::GetCPUCore()
     return nullptr;
 
   return std::make_unique<CPUCore>(this);
+}
+
+void FifoPlayer::SetFileLoadedCallback(CallbackFunc callback)
+{
+  m_FileLoadedCb = std::move(callback);
+
+  // Trigger the callback immediatly if the file is already loaded.
+  if (GetFile() != nullptr)
+  {
+    m_FileLoadedCb();
+  }
 }
 
 bool FifoPlayer::IsRunningWithFakeVideoInterfaceUpdates() const

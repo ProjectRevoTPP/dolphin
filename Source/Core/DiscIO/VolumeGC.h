@@ -25,7 +25,7 @@ enum class Language;
 enum class Region;
 enum class Platform;
 
-class VolumeGC : public Volume
+class VolumeGC : public VolumeDisc
 {
 public:
   VolumeGC(std::unique_ptr<BlobReader> reader);
@@ -108,4 +108,4 @@ private:
   std::unique_ptr<BlobReader> m_reader;
 };
 
-}  // namespace
+}  // namespace DiscIO

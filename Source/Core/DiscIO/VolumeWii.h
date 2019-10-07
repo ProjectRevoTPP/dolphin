@@ -27,7 +27,7 @@ enum class Language;
 enum class Region;
 enum class Platform;
 
-class VolumeWii : public Volume
+class VolumeWii : public VolumeDisc
 {
 public:
   VolumeWii(std::unique_ptr<BlobReader> reader);
@@ -58,6 +58,8 @@ public:
   Platform GetVolumeType() const override;
   bool SupportsIntegrityCheck() const override { return m_encrypted; }
   bool CheckH3TableIntegrity(const Partition& partition) const override;
+  bool CheckBlockIntegrity(u64 block_index, const std::vector<u8>& encrypted_data,
+                           const Partition& partition) const override;
   bool CheckBlockIntegrity(u64 block_index, const Partition& partition) const override;
 
   Region GetRegion() const override;
@@ -98,4 +100,4 @@ private:
   mutable u8 m_last_decrypted_block_data[BLOCK_DATA_SIZE];
 };
 
-}  // namespace
+}  // namespace DiscIO

@@ -36,27 +36,28 @@
 #include "UICommon/CommandLineParse.h"
 #include "UICommon/UICommon.h"
 
-static bool QtMsgAlertHandler(const char* caption, const char* text, bool yes_no, MsgType style)
+static bool QtMsgAlertHandler(const char* caption, const char* text, bool yes_no,
+                              Common::MsgType style)
 {
   std::optional<bool> r = RunOnObject(QApplication::instance(), [&] {
-    ModalMessageBox message_box(QApplication::activeWindow());
+    ModalMessageBox message_box(QApplication::activeWindow(), Qt::ApplicationModal);
     message_box.setWindowTitle(QString::fromUtf8(caption));
     message_box.setText(QString::fromUtf8(text));
 
     message_box.setStandardButtons(yes_no ? QMessageBox::Yes | QMessageBox::No : QMessageBox::Ok);
-    if (style == MsgType::Warning)
+    if (style == Common::MsgType::Warning)
       message_box.addButton(QMessageBox::Ignore)->setText(QObject::tr("Ignore for this session"));
 
     message_box.setIcon([&] {
       switch (style)
       {
-      case MsgType::Information:
+      case Common::MsgType::Information:
         return QMessageBox::Information;
-      case MsgType::Question:
+      case Common::MsgType::Question:
         return QMessageBox::Question;
-      case MsgType::Warning:
+      case Common::MsgType::Warning:
         return QMessageBox::Warning;
-      case MsgType::Critical:
+      case Common::MsgType::Critical:
         return QMessageBox::Critical;
       }
       // appease MSVC
@@ -68,7 +69,10 @@ static bool QtMsgAlertHandler(const char* caption, const char* text, bool yes_no
       return true;
 
     if (button == QMessageBox::Ignore)
-      SetEnableAlert(false);
+    {
+      Common::SetEnableAlert(false);
+      return true;
+    }
 
     return false;
   });
@@ -135,10 +139,10 @@ int main(int argc, char* argv[])
   UICommon::CreateDirectories();
   UICommon::Init();
   Resources::Init();
-  Settings::Instance().SetBatchModeEnabled(options.is_set("batch"));
+  Settings::Instance().SetBatchModeEnabled(options.is_set("batch") && options.is_set("exec"));
 
   // Hook up alerts from core
-  RegisterMsgAlertHandler(QtMsgAlertHandler);
+  Common::RegisterMsgAlertHandler(QtMsgAlertHandler);
 
   // Hook up translations
   Translation::Initialize();
@@ -177,7 +181,7 @@ int main(int argc, char* argv[])
   int retval;
 
   {
-    DolphinAnalytics::Instance()->ReportDolphinStart("qt");
+    DolphinAnalytics::Instance().ReportDolphinStart("qt");
 
     MainWindow win{std::move(boot), static_cast<const char*>(options.get("movie"))};
     if (options.is_set("debugger"))
@@ -217,12 +221,15 @@ int main(int argc, char* argv[])
       SConfig::GetInstance().m_analytics_permission_asked = true;
       Settings::Instance().SetAnalyticsEnabled(answer == QMessageBox::Yes);
 
-      DolphinAnalytics::Instance()->ReloadConfig();
+      DolphinAnalytics::Instance().ReloadConfig();
     }
 #endif
 
-    auto* updater = new Updater(&win);
-    updater->start();
+    if (!Settings::Instance().IsBatchModeEnabled())
+    {
+      auto* updater = new Updater(&win);
+      updater->start();
+    }
 
     retval = app.exec();
   }

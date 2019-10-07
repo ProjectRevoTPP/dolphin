@@ -144,6 +144,7 @@ std::vector<GeckoCode> LoadCodes(const IniFile& globalIni, const IniFile& localI
       // enabled or disabled code
       case '+':
         ss.seekg(1);
+        [[fallthrough]];
       case '$':
         if (!gcode.name.empty())
           gcodes.push_back(gcode);
@@ -253,4 +254,4 @@ void SaveCodes(IniFile& inifile, const std::vector<GeckoCode>& gcodes)
   inifile.SetLines("Gecko", lines);
   inifile.SetLines("Gecko_Enabled", enabledLines);
 }
-}
+}  // namespace Gecko

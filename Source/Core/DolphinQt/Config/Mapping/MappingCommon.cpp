@@ -33,7 +33,7 @@ QString GetExpressionForControl(const QString& control_name,
   if (control_device != default_device)
   {
     expr += QString::fromStdString(control_device.ToString());
-    expr += QStringLiteral(":");
+    expr += QLatin1Char{':'};
   }
 
   // append the control name
@@ -68,10 +68,7 @@ QString DetectExpression(QPushButton* button, ciface::Core::DeviceContainer& dev
   // Avoid that the button press itself is registered as an event
   Common::SleepCurrentThread(50);
 
-  std::shared_ptr<ciface::Core::Device> device;
-  ciface::Core::Device::Input* input;
-
-  std::tie(device, input) = device_container.DetectInput(INPUT_DETECT_TIME, device_strings);
+  const auto [device, input] = device_container.DetectInput(INPUT_DETECT_TIME, device_strings);
 
   const auto timer = new QTimer(button);
 

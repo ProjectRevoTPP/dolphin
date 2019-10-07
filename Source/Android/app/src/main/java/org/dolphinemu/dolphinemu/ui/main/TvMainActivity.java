@@ -132,12 +132,6 @@ public final class TvMainActivity extends FragmentActivity implements MainView
   }
 
   @Override
-  public void refreshFragmentScreenshot(int fragmentPosition)
-  {
-    mRowsAdapter.notifyArrayItemRangeChanged(0, mRowsAdapter.size());
-  }
-
-  @Override
   public void launchSettingsActivity(MenuTag menuTag)
   {
     SettingsActivity.launch(this, menuTag, "");
@@ -147,6 +141,12 @@ public final class TvMainActivity extends FragmentActivity implements MainView
   public void launchFileListActivity()
   {
     FileBrowserHelper.openDirectoryPicker(this);
+  }
+
+  @Override
+  public void launchOpenFileActivity()
+  {
+    FileBrowserHelper.openFilePicker(this, MainPresenter.REQUEST_OPEN_FILE, true);
   }
 
   @Override
@@ -178,8 +178,12 @@ public final class TvMainActivity extends FragmentActivity implements MainView
         }
         break;
 
-      case MainPresenter.REQUEST_EMULATE_GAME:
-        mPresenter.refreshFragmentScreenshot(resultCode);
+      case MainPresenter.REQUEST_OPEN_FILE:
+        // If the user picked a file, as opposed to just backing out.
+        if (resultCode == MainActivity.RESULT_OK)
+        {
+          EmulationActivity.launchFile(this, FileBrowserHelper.getSelectedFiles(result));
+        }
         break;
     }
   }

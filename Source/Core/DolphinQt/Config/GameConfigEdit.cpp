@@ -21,8 +21,8 @@
 #include "DolphinQt/Config/GameConfigHighlighter.h"
 #include "DolphinQt/QtUtils/ModalMessageBox.h"
 
-GameConfigEdit::GameConfigEdit(QWidget* parent, const QString& path, bool read_only)
-    : m_path(path), m_read_only(read_only)
+GameConfigEdit::GameConfigEdit(QWidget* parent, QString path, bool read_only)
+    : QWidget{parent}, m_path(std::move(path)), m_read_only(read_only)
 {
   CreateWidgets();
 
@@ -179,7 +179,7 @@ void GameConfigEdit::SetOption(const QString& section, const QString& key, const
     if (value_cursor.isNull())
     {
       section_cursor.clearSelection();
-      section_cursor.insertText(QStringLiteral("\n") + new_line);
+      section_cursor.insertText(QLatin1Char{'\n'} + new_line);
     }
     else
     {

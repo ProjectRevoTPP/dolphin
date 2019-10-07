@@ -33,7 +33,7 @@ std::string NameForPartitionType(u32 partition_type, bool include_prefix)
     // wit doesn't recognize the name "INSTALL", so we can't use it when naming partition folders
     if (!include_prefix)
       return "INSTALL";
-    // [[fallthrough]]
+    [[fallthrough]];
   default:
     const std::string type_as_game_id{static_cast<char>((partition_type >> 24) & 0xFF),
                                       static_cast<char>((partition_type >> 16) & 0xFF),
@@ -69,7 +69,7 @@ u64 ReadFile(const Volume& volume, const Partition& partition, const FileInfo* f
   return read_length;
 }
 
-u64 ReadFile(const Volume& volume, const Partition& partition, const std::string& path, u8* buffer,
+u64 ReadFile(const Volume& volume, const Partition& partition, std::string_view path, u8* buffer,
              u64 max_buffer_size, u64 offset_in_file)
 {
   const FileSystem* file_system = volume.GetFileSystem(partition);
@@ -117,7 +117,7 @@ bool ExportFile(const Volume& volume, const Partition& partition, const FileInfo
                     export_filename);
 }
 
-bool ExportFile(const Volume& volume, const Partition& partition, const std::string& path,
+bool ExportFile(const Volume& volume, const Partition& partition, std::string_view path,
                 const std::string& export_filename)
 {
   const FileSystem* file_system = volume.GetFileSystem(partition);

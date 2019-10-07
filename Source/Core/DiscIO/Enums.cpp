@@ -64,7 +64,7 @@ std::string GetName(Country country, bool translate)
     break;
   }
 
-  return translate ? GetStringT(name.c_str()) : name;
+  return translate ? Common::GetStringT(name.c_str()) : name;
 }
 
 std::string GetName(Language language, bool translate)
@@ -108,7 +108,7 @@ std::string GetName(Language language, bool translate)
     break;
   }
 
-  return translate ? GetStringT(name.c_str()) : name;
+  return translate ? Common::GetStringT(name.c_str()) : name;
 }
 
 bool IsDisc(Platform volume_type)
@@ -145,11 +145,37 @@ Country TypicalCountryForRegion(Region region)
   }
 }
 
+Region SysConfCountryToRegion(u8 country_code)
+{
+  if (country_code == 0)
+    return Region::Unknown;
+
+  if (country_code < 0x08)  // Japan
+    return Region::NTSC_J;
+
+  if (country_code < 0x40)  // Americas
+    return Region::NTSC_U;
+
+  if (country_code < 0x80)  // Europe, Oceania, parts of Africa
+    return Region::PAL;
+
+  if (country_code < 0xa8)  // Southeast Asia
+    return country_code == 0x88 ? Region::NTSC_K : Region::NTSC_J;
+
+  if (country_code < 0xc0)  // Middle East
+    return Region::NTSC_U;
+
+  return Region::Unknown;
+}
+
 Region CountryCodeToRegion(u8 country_code, Platform platform, Region expected_region,
                            std::optional<u16> revision)
 {
   switch (country_code)
   {
+  case '\2':
+    return expected_region;  // Wii Menu (same title ID for all regions)
+
   case 'J':
     return Region::NTSC_J;
 
@@ -343,7 +369,7 @@ std::string GetSysMenuVersionString(u16 title_version)
     break;
   }
 
-  switch (title_version & ~0xf)
+  switch (title_version & 0xff0)
   {
   case 32:
     return "1.0" + region_letter;
@@ -672,4 +698,4 @@ const std::string& GetCompanyFromID(const std::string& company_id)
   else
     return EMPTY_STRING;
 }
-}
+}  // namespace DiscIO
