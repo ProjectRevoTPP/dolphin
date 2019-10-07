@@ -102,7 +102,7 @@ GCPad::GCPad(const unsigned int index) : m_index(index)
   // options
   groups.emplace_back(m_options = new ControllerEmu::ControlGroup(_trans("Options")));
   // no forced input initially
-  m_forced_input.err = PadError::PAD_ERR_NO_CONTROLLER;
+  m_forced_input.isConnected = false;
   m_options->AddSetting(&m_always_connected_setting,
                         // i18n: Treat a controller as always being connected regardless of what
                         // devices the user actually has plugged in
@@ -145,7 +145,7 @@ GCPadStatus GCPad::GetInput() const
 
   // if there is valid forced input, this controller is hijacked
   // just return that then
-  if (m_forced_input.err == PadError::PAD_ERR_NONE) {
+  if (m_forced_input.isConnected) {
     return m_forced_input;
   }
 

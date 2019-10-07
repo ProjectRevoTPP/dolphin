@@ -117,7 +117,7 @@ namespace DolphinWatch {
 		GCPad* pad = GetGCPad(i_pad);
 
 		GCPadStatus status;
-		status.err = PadError::PAD_ERR_NONE;
+    status.isConnected = true;
 		// neutral joystick positions
 		status.stickX = GCPadStatus::MAIN_STICK_CENTER_X + int(stickX * GCPadStatus::MAIN_STICK_RADIUS);
 		status.stickY = GCPadStatus::MAIN_STICK_CENTER_Y + int(stickY * GCPadStatus::MAIN_STICK_RADIUS);
@@ -147,7 +147,7 @@ namespace DolphinWatch {
 			if (hijacksGC[i] <= 0) {
 				hijacksGC[i] = 0;
 				GCPadStatus status;
-				status.err = PadError::PAD_ERR_NO_CONTROLLER;
+        status.isConnected = false;
 				GetGCPad(i)->SetForcedInput(&status);
 			}
 		}

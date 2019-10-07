@@ -81,7 +81,6 @@ void UpdateTitle();
 //
 // This should only be called from the CPU thread or the host thread.
 void RunAsCPUThread(std::function<void()> function);
-bool RunAsCPUThread(std::function<bool()> function);
 
 // Run a function on the CPU thread, asynchronously.
 // This is only valid to call from the host thread, since it uses PauseAndLock() internally.

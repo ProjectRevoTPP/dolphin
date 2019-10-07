@@ -156,6 +156,7 @@
     </Filter>
     <Filter Include="DolphinWatch">
       <UniqueIdentifier>{771997b5-22b9-4936-831a-6bfc16b814d1}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Config">
       <UniqueIdentifier>{a3d4778e-1891-458e-9bd1-009c2f5e8ed9}</UniqueIdentifier>
     </Filter>

@@ -543,7 +543,8 @@ bool LoadAs(const std::string& filename)
 
   s_load_or_save_in_progress = true;
 
-  bool success = Core::RunOnCPUThread(
+  bool success = false;
+  Core::RunOnCPUThread(
       [&] {
         // Save temp buffer for undo load state
         if (!Movie::IsJustStartingRecordingInputFromSaveState())
@@ -578,6 +579,7 @@ bool LoadAs(const std::string& filename)
         {
           if (loadedSuccessfully)
           {
+            success = true;
             Core::DisplayMessage(StringFromFormat("Loaded state from %s", filename.c_str()), 2000);
             if (File::Exists(filename + ".dtm"))
               Movie::LoadInput(filename + ".dtm");

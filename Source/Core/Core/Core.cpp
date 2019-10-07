@@ -767,25 +767,8 @@ static bool PauseAndLock(bool do_lock, bool unpause_on_unlock)
   return was_unpaused;
 }
 
-template<typename T>
-T RunAsCPUThread(std::function<T()> function)
-{
-  const bool is_cpu_thread = IsCPUThread();
-  bool was_unpaused = false;
-  if (!is_cpu_thread)
-    was_unpaused = PauseAndLock(true, true);
-
-  T result = function();
-
-  if (!is_cpu_thread)
-    PauseAndLock(false, was_unpaused);
-
-  return result;
-}
-
 void RunAsCPUThread(std::function<void()> function)
 {
-  // FIXME avoid duplicate code somehow
   const bool is_cpu_thread = IsCPUThread();
   bool was_unpaused = false;
   if (!is_cpu_thread)
@@ -797,9 +780,43 @@ void RunAsCPUThread(std::function<void()> function)
     PauseAndLock(false, was_unpaused);
 }
 
-bool RunAsCPUThread(std::function<bool()> function)
+void RunOnCPUThread(std::function<void()> function, bool wait_for_completion)
 {
-  return RunAsCPUThread<bool>(function);
+  // If the CPU thread is not running, assume there is no active CPU thread we can race against.
+  if (!IsRunning() || IsCPUThread())
+  {
+    function();
+    return;
+  }
+
+  // Pause the CPU (set it to stepping mode).
+  const bool was_running = PauseAndLock(true, true);
+
+  // Queue the job function.
+  if (wait_for_completion)
+  {
+    // Trigger the event after executing the function.
+    s_cpu_thread_job_finished.Reset();
+    CPU::AddCPUThreadJob([&function]() {
+      function();
+      s_cpu_thread_job_finished.Set();
+    });
+  }
+  else
+  {
+    CPU::AddCPUThreadJob(std::move(function));
+  }
+
+  // Release the CPU thread, and let it execute the callback.
+  PauseAndLock(false, was_running);
+
+  // If we're waiting for completion, block until the event fires.
+  if (wait_for_completion)
+  {
+    // Periodically yield to the UI thread, so we don't deadlock.
+    while (!s_cpu_thread_job_finished.WaitFor(std::chrono::milliseconds(10)))
+      Host_YieldToUI();
+  }
 }
 
 // Display FPS info
