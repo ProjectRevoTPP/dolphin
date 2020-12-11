@@ -33,6 +33,8 @@ add_library(videocommon
   FramebufferManager.h
   FramebufferShaderGen.cpp
   FramebufferShaderGen.h
+  FreeLookCamera.cpp
+  FreeLookCamera.h
   GeometryShaderGen.cpp
   GeometryShaderGen.h
   GeometryShaderManager.cpp
@@ -132,6 +134,7 @@ target_link_libraries(videocommon
 PUBLIC
   core
 PRIVATE
+  fmt::fmt
   png
   xxhash
   imgui

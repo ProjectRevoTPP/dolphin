@@ -12,7 +12,6 @@
 #include <QGroupBox>
 #include <QLabel>
 #include <QPushButton>
-#include <QRadioButton>
 #include <QSlider>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -42,12 +41,10 @@ constexpr const char* AUTO_UPDATE_STABLE_STRING = "stable";
 constexpr const char* AUTO_UPDATE_BETA_STRING = "beta";
 constexpr const char* AUTO_UPDATE_DEV_STRING = "dev";
 
-static const std::map<PowerPC::CPUCore, const char*> CPU_CORE_NAMES = {
-    {PowerPC::CPUCore::Interpreter, QT_TR_NOOP("Interpreter (slowest)")},
-    {PowerPC::CPUCore::CachedInterpreter, QT_TR_NOOP("Cached Interpreter (slower)")},
-    {PowerPC::CPUCore::JIT64, QT_TR_NOOP("JIT Recompiler (recommended)")},
-    {PowerPC::CPUCore::JITARM64, QT_TR_NOOP("JIT Arm64 (experimental)")},
-};
+constexpr int FALLBACK_REGION_NTSCJ_INDEX = 0;
+constexpr int FALLBACK_REGION_NTSCU_INDEX = 1;
+constexpr int FALLBACK_REGION_PAL_INDEX = 2;
+constexpr int FALLBACK_REGION_NTSCK_INDEX = 3;
 
 GeneralPane::GeneralPane(QWidget* parent) : QWidget(parent)
 {
@@ -58,6 +55,8 @@ GeneralPane::GeneralPane(QWidget* parent) : QWidget(parent)
 
   connect(&Settings::Instance(), &Settings::EmulationStateChanged, this,
           &GeneralPane::OnEmulationStateChanged);
+
+  OnEmulationStateChanged(Core::GetState());
 }
 
 void GeneralPane::CreateLayout()
@@ -69,10 +68,11 @@ void GeneralPane::CreateLayout()
   if (AutoUpdateChecker::SystemSupportsAutoUpdates())
     CreateAutoUpdate();
 
+  CreateFallbackRegion();
+
 #if defined(USE_ANALYTICS) && USE_ANALYTICS
   CreateAnalytics();
 #endif
-  CreateAdvanced();
 
   m_main_layout->addStretch(1);
   setLayout(m_main_layout);
@@ -88,9 +88,7 @@ void GeneralPane::OnEmulationStateChanged(Core::State state)
 #ifdef USE_DISCORD_PRESENCE
   m_checkbox_discord_presence->setEnabled(!running);
 #endif
-
-  for (QRadioButton* radio_button : m_cpu_cores)
-    radio_button->setEnabled(!running);
+  m_combobox_fallback_region->setEnabled(!running);
 }
 
 void GeneralPane::ConnectLayout()
@@ -106,19 +104,19 @@ void GeneralPane::ConnectLayout()
 
   if (AutoUpdateChecker::SystemSupportsAutoUpdates())
   {
-    connect(m_combobox_update_track,
-            static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged), this,
+    connect(m_combobox_update_track, qOverload<int>(&QComboBox::currentIndexChanged), this,
             &GeneralPane::OnSaveConfig);
     connect(&Settings::Instance(), &Settings::AutoUpdateTrackChanged, this,
             &GeneralPane::LoadConfig);
   }
 
   // Advanced
-  connect(m_combobox_speedlimit,
-          static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
+  connect(m_combobox_speedlimit, qOverload<int>(&QComboBox::currentIndexChanged),
           [this]() { OnSaveConfig(); });
-  for (QRadioButton* radio_button : m_cpu_cores)
-    connect(radio_button, &QRadioButton::toggled, this, &GeneralPane::OnSaveConfig);
+
+  connect(m_combobox_fallback_region, qOverload<int>(&QComboBox::currentIndexChanged), this,
+          &GeneralPane::OnSaveConfig);
+  connect(&Settings::Instance(), &Settings::FallbackRegionChanged, this, &GeneralPane::LoadConfig);
 
 #if defined(USE_ANALYTICS) && USE_ANALYTICS
   connect(&Settings::Instance(), &Settings::AnalyticsToggled, this, &GeneralPane::LoadConfig);
@@ -193,6 +191,33 @@ void GeneralPane::CreateAutoUpdate()
     m_combobox_update_track->addItem(option);
 }
 
+void GeneralPane::CreateFallbackRegion()
+{
+  auto* fallback_region_group = new QGroupBox(tr("Fallback Region"));
+  auto* layout = new QVBoxLayout;
+  fallback_region_group->setLayout(layout);
+  m_main_layout->addWidget(fallback_region_group);
+
+  m_combobox_fallback_region = new QComboBox(this);
+
+  auto* form_widget = new QWidget;
+  auto* form_layout = new QFormLayout;
+  form_widget->setLayout(form_layout);
+  form_layout->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+  form_layout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+  form_layout->addRow(tr("Fallback Region:"), m_combobox_fallback_region);
+  layout->addWidget(form_widget);
+
+  auto* fallback_region_description =
+      new QLabel(tr("Dolphin will use this for titles whose region cannot be determined "
+                    "automatically."));
+  fallback_region_description->setWordWrap(true);
+  layout->addWidget(fallback_region_description);
+
+  for (const QString& option : {tr("NTSC-J"), tr("NTSC-U"), tr("PAL"), tr("NTSC-K")})
+    m_combobox_fallback_region->addItem(option);
+}
+
 #if defined(USE_ANALYTICS) && USE_ANALYTICS
 void GeneralPane::CreateAnalytics()
 {
@@ -207,26 +232,6 @@ void GeneralPane::CreateAnalytics()
   analytics_group_layout->addWidget(m_button_generate_new_identity);
 }
 #endif
-
-void GeneralPane::CreateAdvanced()
-{
-  auto* advanced_group = new QGroupBox(tr("Advanced Settings"));
-  auto* advanced_group_layout = new QVBoxLayout;
-  advanced_group->setLayout(advanced_group_layout);
-  m_main_layout->addWidget(advanced_group);
-
-  // Speed Limit
-  auto* engine_group = new QGroupBox(tr("CPU Emulation Engine"));
-  auto* engine_group_layout = new QVBoxLayout;
-  engine_group->setLayout(engine_group_layout);
-  advanced_group_layout->addWidget(engine_group);
-
-  for (PowerPC::CPUCore cpu_core : PowerPC::AvailableCPUCores())
-  {
-    m_cpu_cores.emplace_back(new QRadioButton(tr(CPU_CORE_NAMES.at(cpu_core))));
-    engine_group_layout->addWidget(m_cpu_cores.back());
-  }
-}
 
 void GeneralPane::LoadConfig()
 {
@@ -259,12 +264,18 @@ void GeneralPane::LoadConfig()
     m_combobox_speedlimit->setCurrentIndex(selection);
   m_checkbox_dualcore->setChecked(SConfig::GetInstance().bCPUThread);
 
-  const std::vector<PowerPC::CPUCore>& available_cpu_cores = PowerPC::AvailableCPUCores();
-  for (size_t i = 0; i < available_cpu_cores.size(); ++i)
-  {
-    if (available_cpu_cores[i] == SConfig::GetInstance().cpu_core)
-      m_cpu_cores[i]->setChecked(true);
-  }
+  const auto fallback = Settings::Instance().GetFallbackRegion();
+
+  if (fallback == DiscIO::Region::NTSC_J)
+    m_combobox_fallback_region->setCurrentIndex(FALLBACK_REGION_NTSCJ_INDEX);
+  else if (fallback == DiscIO::Region::NTSC_U)
+    m_combobox_fallback_region->setCurrentIndex(FALLBACK_REGION_NTSCU_INDEX);
+  else if (fallback == DiscIO::Region::PAL)
+    m_combobox_fallback_region->setCurrentIndex(FALLBACK_REGION_PAL_INDEX);
+  else if (fallback == DiscIO::Region::NTSC_K)
+    m_combobox_fallback_region->setCurrentIndex(FALLBACK_REGION_NTSCK_INDEX);
+  else
+    m_combobox_fallback_region->setCurrentIndex(FALLBACK_REGION_NTSCJ_INDEX);
 }
 
 static QString UpdateTrackFromIndex(int index)
@@ -285,6 +296,31 @@ static QString UpdateTrackFromIndex(int index)
   case AUTO_UPDATE_DEV_INDEX:
     value = QString::fromStdString(AUTO_UPDATE_DEV_STRING);
     break;
+  }
+
+  return value;
+}
+
+static DiscIO::Region UpdateFallbackRegionFromIndex(int index)
+{
+  DiscIO::Region value = DiscIO::Region::Unknown;
+
+  switch (index)
+  {
+  case FALLBACK_REGION_NTSCJ_INDEX:
+    value = DiscIO::Region::NTSC_J;
+    break;
+  case FALLBACK_REGION_NTSCU_INDEX:
+    value = DiscIO::Region::NTSC_U;
+    break;
+  case FALLBACK_REGION_PAL_INDEX:
+    value = DiscIO::Region::PAL;
+    break;
+  case FALLBACK_REGION_NTSCK_INDEX:
+    value = DiscIO::Region::NTSC_K;
+    break;
+  default:
+    value = DiscIO::Region::NTSC_J;
   }
 
   return value;
@@ -318,16 +354,8 @@ void GeneralPane::OnSaveConfig()
   Config::SetBase(Config::MAIN_AUTO_DISC_CHANGE, m_checkbox_auto_disc_change->isChecked());
   Config::SetBaseOrCurrent(Config::MAIN_ENABLE_CHEATS, m_checkbox_cheats->isChecked());
   settings.m_EmulationSpeed = m_combobox_speedlimit->currentIndex() * 0.1f;
-
-  for (size_t i = 0; i < m_cpu_cores.size(); ++i)
-  {
-    if (m_cpu_cores[i]->isChecked())
-    {
-      settings.cpu_core = PowerPC::AvailableCPUCores()[i];
-      Config::SetBaseOrCurrent(Config::MAIN_CPU_CORE, PowerPC::AvailableCPUCores()[i]);
-      break;
-    }
-  }
+  Settings::Instance().SetFallbackRegion(
+      UpdateFallbackRegionFromIndex(m_combobox_fallback_region->currentIndex()));
 
   settings.SaveSettings();
 }

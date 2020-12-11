@@ -18,11 +18,14 @@ namespace IOS::HLE::Device
 {
 constexpr u32 USBV5_VERSION = 0x50001;
 
-USB_VEN::~USB_VEN() = default;
+USB_VEN::~USB_VEN()
+{
+  m_scan_thread.Stop();
+}
 
 IPCCommandResult USB_VEN::IOCtl(const IOCtlRequest& request)
 {
-  request.Log(GetDeviceName(), LogTypes::IOS_USB);
+  request.Log(GetDeviceName(), Common::Log::IOS_USB);
   switch (request.request)
   {
   case USB::IOCTL_USBV5_GETVERSION:
@@ -47,7 +50,7 @@ IPCCommandResult USB_VEN::IOCtl(const IOCtlRequest& request)
     return HandleDeviceIOCtl(request,
                              [&](USBV5Device& device) { return CancelEndpoint(device, request); });
   default:
-    request.DumpUnknown(GetDeviceName(), LogTypes::IOS_USB, LogTypes::LERROR);
+    request.DumpUnknown(GetDeviceName(), Common::Log::IOS_USB, Common::Log::LERROR);
     return GetDefaultReply(IPC_SUCCESS);
   }
 }

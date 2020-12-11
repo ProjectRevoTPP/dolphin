@@ -21,7 +21,7 @@
 
 // To be used as follows:
 //
-// VolumeVerifier verifier(volume);
+// VolumeVerifier verifier(volume, redump_verification, hashes_to_calculate);
 // verifier.Start();
 // while (verifier.GetBytesProcessed() != verifier.GetTotalBytes())
 //   verifier.Process();
@@ -35,6 +35,72 @@
 namespace DiscIO
 {
 class FileInfo;
+
+template <typename T>
+struct Hashes
+{
+  T crc32;
+  T md5;
+  T sha1;
+};
+
+class RedumpVerifier final
+{
+public:
+  enum class Status
+  {
+    Unknown,
+    GoodDump,
+    BadDump,
+    Error,
+  };
+
+  struct Result
+  {
+    Status status = Status::Unknown;
+    std::string message;
+  };
+
+  void Start(const Volume& volume);
+  Result Finish(const Hashes<std::vector<u8>>& hashes);
+
+private:
+  enum class DownloadStatus
+  {
+    NotAttempted,
+    Success,
+    Fail,
+    FailButOldCacheAvailable,
+    SystemNotAvailable,
+  };
+
+  struct DownloadState
+  {
+    std::mutex mutex;
+    DownloadStatus status = DownloadStatus::NotAttempted;
+  };
+
+  struct PotentialMatch
+  {
+    u64 size;
+    Hashes<std::vector<u8>> hashes;
+  };
+
+  static DownloadStatus DownloadDatfile(const std::string& system, DownloadStatus old_status);
+  static std::vector<u8> ReadDatfile(const std::string& system);
+  std::vector<PotentialMatch> ScanDatfile(const std::vector<u8>& data, const std::string& system);
+
+  std::string m_game_id;
+  u16 m_revision;
+  u8 m_disc_number;
+  u64 m_size;
+
+  std::future<std::vector<PotentialMatch>> m_future;
+  Result m_result;
+
+  static DownloadState m_gc_download_state;
+  static DownloadState m_wii_download_state;
+};
 
 class VolumeVerifier final
 {
@@ -53,22 +119,15 @@ public:
     std::string text;
   };
 
-  template <typename T>
-  struct Hashes
-  {
-    T crc32;
-    T md5;
-    T sha1;
-  };
-
   struct Result
   {
     Hashes<std::vector<u8>> hashes;
     std::string summary_text;
     std::vector<Problem> problems;
+    RedumpVerifier::Result redump;
   };
 
-  VolumeVerifier(const Volume& volume, Hashes<bool> hashes_to_calculate);
+  VolumeVerifier(const Volume& volume, bool redump_verification, Hashes<bool> hashes_to_calculate);
   ~VolumeVerifier();
 
   void Start();
@@ -86,19 +145,19 @@ private:
     u64 block_index;
   };
 
-  void CheckPartitions();
+  std::vector<Partition> CheckPartitions();
   bool CheckPartition(const Partition& partition);  // Returns false if partition should be ignored
   std::string GetPartitionName(std::optional<u32> type) const;
-  void CheckCorrectlySigned(const Partition& partition, std::string error_text);
   bool IsDebugSigned() const;
   bool ShouldHaveChannelPartition() const;
   bool ShouldHaveInstallPartition() const;
   bool ShouldHaveMasterpiecePartitions() const;
   bool ShouldBeDualLayer() const;
-  void CheckDiscSize();
-  u64 GetBiggestReferencedOffset() const;
+  void CheckVolumeSize();
+  u64 GetBiggestReferencedOffset(const std::vector<Partition>& partitions) const;
   u64 GetBiggestReferencedOffset(const FileInfo& file_info) const;
   void CheckMisc();
+  void CheckSuperPaperMario();
   void SetUpHashing();
   void WaitForAsyncOperations() const;
   bool ReadChunkAndWaitForAsyncOperations(u64 bytes_to_read);
@@ -110,6 +169,11 @@ private:
   bool m_is_tgc = false;
   bool m_is_datel = false;
   bool m_is_not_retail = false;
+
+  bool m_redump_verification;
+  RedumpVerifier m_redump_verifier;
+
+  bool m_read_errors_occurred = false;
 
   Hashes<bool> m_hashes_to_calculate{};
   bool m_calculating_any_hash = false;

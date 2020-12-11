@@ -19,6 +19,7 @@
 #include <deque>
 #include <list>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <type_traits>
@@ -27,8 +28,8 @@
 
 #include "Common/Assert.h"
 #include "Common/CommonTypes.h"
-#include "Common/Compiler.h"
 #include "Common/Flag.h"
+#include "Common/Inline.h"
 #include "Common/Logging/Log.h"
 
 // XXX: Replace this with std::is_trivially_copyable<T> once we stop using volatile
@@ -144,6 +145,36 @@ public:
     Do(x.second);
   }
 
+  template <typename T>
+  void Do(std::optional<T>& x)
+  {
+    bool present = x.has_value();
+    Do(present);
+
+    switch (mode)
+    {
+    case MODE_READ:
+      if (present)
+      {
+        x = std::make_optional<T>();
+        Do(x.value());
+      }
+      else
+      {
+        x = std::nullopt;
+      }
+      break;
+
+    case MODE_WRITE:
+    case MODE_MEASURE:
+    case MODE_VERIFY:
+      if (present)
+        Do(x.value());
+
+      break;
+    }
+  }
+
   template <typename T, std::size_t N>
   void DoArray(std::array<T, N>& x)
   {
@@ -236,9 +267,10 @@ public:
 
     if (mode == PointerWrap::MODE_READ && cookie != arbitraryNumber)
     {
-      PanicAlertT("Error: After \"%s\", found %d (0x%X) instead of save marker %d (0x%X). Aborting "
-                  "savestate load...",
-                  prevName.c_str(), cookie, cookie, arbitraryNumber, arbitraryNumber);
+      PanicAlertFmtT(
+          "Error: After \"{0}\", found {1} ({2:#x}) instead of save marker {3} ({4:#x}). Aborting "
+          "savestate load...",
+          prevName, cookie, cookie, arbitraryNumber, arbitraryNumber);
       mode = PointerWrap::MODE_MEASURE;
     }
   }

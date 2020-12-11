@@ -34,6 +34,8 @@ CodeWidget::CodeWidget(QWidget* parent) : QDockWidget(parent)
 
   setAllowedAreas(Qt::AllDockWidgetAreas);
 
+  CreateWidgets();
+
   auto& settings = Settings::GetQSettings();
 
   restoreGeometry(settings.value(QStringLiteral("codewidget/geometry")).toByteArray());
@@ -41,7 +43,7 @@ CodeWidget::CodeWidget(QWidget* parent) : QDockWidget(parent)
   // according to Settings
   setFloating(settings.value(QStringLiteral("codewidget/floating")).toBool());
 
-  connect(&Settings::Instance(), &Settings::CodeVisibilityChanged,
+  connect(&Settings::Instance(), &Settings::CodeVisibilityChanged, this,
           [this](bool visible) { setHidden(!visible); });
 
   connect(Host::GetInstance(), &Host::UpdateDisasmDialog, this, [this] {
@@ -52,12 +54,11 @@ CodeWidget::CodeWidget(QWidget* parent) : QDockWidget(parent)
 
   connect(Host::GetInstance(), &Host::NotifyMapLoaded, this, &CodeWidget::UpdateSymbols);
 
-  connect(&Settings::Instance(), &Settings::DebugModeToggled,
+  connect(&Settings::Instance(), &Settings::DebugModeToggled, this,
           [this](bool enabled) { setHidden(!enabled || !Settings::Instance().IsCodeVisible()); });
 
   connect(&Settings::Instance(), &Settings::EmulationStateChanged, this, &CodeWidget::Update);
 
-  CreateWidgets();
   ConnectWidgets();
 
   m_code_splitter->restoreState(
@@ -73,7 +74,7 @@ CodeWidget::~CodeWidget()
   settings.setValue(QStringLiteral("codewidget/geometry"), saveGeometry());
   settings.setValue(QStringLiteral("codewidget/floating"), isFloating());
   settings.setValue(QStringLiteral("codewidget/codesplitter"), m_code_splitter->saveState());
-  settings.setValue(QStringLiteral("codewidget/boxplitter"), m_box_splitter->saveState());
+  settings.setValue(QStringLiteral("codewidget/boxsplitter"), m_box_splitter->saveState());
 }
 
 void CodeWidget::closeEvent(QCloseEvent*)
@@ -156,6 +157,7 @@ void CodeWidget::CreateWidgets()
 void CodeWidget::ConnectWidgets()
 {
   connect(m_search_address, &QLineEdit::textChanged, this, &CodeWidget::OnSearchAddress);
+  connect(m_search_address, &QLineEdit::returnPressed, this, &CodeWidget::OnSearchAddress);
   connect(m_search_symbols, &QLineEdit::textChanged, this, &CodeWidget::OnSearchSymbols);
 
   connect(m_symbols_list, &QListWidget::itemPressed, this, &CodeWidget::OnSelectSymbol);

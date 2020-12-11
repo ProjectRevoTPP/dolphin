@@ -6,10 +6,8 @@
 
 #include <algorithm>
 #include <array>
-#include <cinttypes>
 #include <cstddef>
 #include <cstring>
-#include <locale>
 #include <map>
 #include <optional>
 #include <string>
@@ -80,11 +78,7 @@ bool operator!=(const Content& lhs, const Content& rhs)
   return !operator==(lhs, rhs);
 }
 
-SignedBlobReader::SignedBlobReader(const std::vector<u8>& bytes) : m_bytes(bytes)
-{
-}
-
-SignedBlobReader::SignedBlobReader(std::vector<u8>&& bytes) : m_bytes(std::move(bytes))
+SignedBlobReader::SignedBlobReader(std::vector<u8> bytes) : m_bytes(std::move(bytes))
 {
 }
 
@@ -93,12 +87,7 @@ const std::vector<u8>& SignedBlobReader::GetBytes() const
   return m_bytes;
 }
 
-void SignedBlobReader::SetBytes(const std::vector<u8>& bytes)
-{
-  m_bytes = bytes;
-}
-
-void SignedBlobReader::SetBytes(std::vector<u8>&& bytes)
+void SignedBlobReader::SetBytes(std::vector<u8> bytes)
 {
   m_bytes = std::move(bytes);
 }
@@ -214,11 +203,7 @@ bool IsValidTMDSize(size_t size)
   return size <= 0x49e4;
 }
 
-TMDReader::TMDReader(const std::vector<u8>& bytes) : SignedBlobReader(bytes)
-{
-}
-
-TMDReader::TMDReader(std::vector<u8>&& bytes) : SignedBlobReader(std::move(bytes))
+TMDReader::TMDReader(std::vector<u8> bytes) : SignedBlobReader(std::move(bytes))
 {
 }
 
@@ -314,11 +299,7 @@ std::string TMDReader::GetGameID() const
   std::memcpy(game_id, m_bytes.data() + offsetof(TMDHeader, title_id) + 4, 4);
   std::memcpy(game_id + 4, m_bytes.data() + offsetof(TMDHeader, group_id), 2);
 
-  const bool all_printable = std::all_of(std::begin(game_id), std::end(game_id), [](char c) {
-    return std::isprint(c, std::locale::classic());
-  });
-
-  if (all_printable)
+  if (std::all_of(std::begin(game_id), std::end(game_id), IsPrintableCharacter))
     return std::string(game_id, sizeof(game_id));
 
   return fmt::format("{:016x}", GetTitleId());
@@ -329,10 +310,7 @@ std::string TMDReader::GetGameTDBID() const
   const u8* begin = m_bytes.data() + offsetof(TMDHeader, title_id) + 4;
   const u8* end = begin + 4;
 
-  const bool all_printable =
-      std::all_of(begin, end, [](char c) { return std::isprint(c, std::locale::classic()); });
-
-  if (all_printable)
+  if (std::all_of(begin, end, IsPrintableCharacter))
     return std::string(begin, end);
 
   return fmt::format("{:016x}", GetTitleId());
@@ -384,11 +362,7 @@ bool TMDReader::FindContentById(u32 id, Content* content) const
   return false;
 }
 
-TicketReader::TicketReader(const std::vector<u8>& bytes) : SignedBlobReader(bytes)
-{
-}
-
-TicketReader::TicketReader(std::vector<u8>&& bytes) : SignedBlobReader(std::move(bytes))
+TicketReader::TicketReader(std::vector<u8> bytes) : SignedBlobReader(std::move(bytes))
 {
 }
 
@@ -455,8 +429,8 @@ std::array<u8, 16> TicketReader::GetTitleKey(const HLE::IOSC& iosc) const
   u8 index = m_bytes.at(offsetof(Ticket, common_key_index));
   if (index >= HLE::IOSC::COMMON_KEY_HANDLES.size())
   {
-    PanicAlert("Bad common key index for title %016" PRIx64 ": %u -- using common key 0",
-               GetTitleId(), index);
+    PanicAlertFmt("Bad common key index for title {:016x}: {} -- using common key 0", GetTitleId(),
+                  index);
     index = 0;
   }
   auto common_key_handle = HLE::IOSC::COMMON_KEY_HANDLES[index];
@@ -646,7 +620,7 @@ UIDSys::UIDSys(std::shared_ptr<HLE::FS::FileSystem> fs) : m_fs{fs}
   {
     while (true)
     {
-      const std::pair<u32, u64> entry = ReadUidSysEntry(*file);
+      std::pair<u32, u64> entry = ReadUidSysEntry(*file);
       if (!entry.first && !entry.second)
         break;
 
@@ -679,7 +653,7 @@ u32 UIDSys::GetOrInsertUIDForTitle(const u64 title_id)
   const u32 current_uid = GetUIDFromTitle(title_id);
   if (current_uid)
   {
-    INFO_LOG(IOS_ES, "Title %016" PRIx64 " already exists in uid.sys", title_id);
+    INFO_LOG_FMT(IOS_ES, "Title {:016x} already exists in uid.sys", title_id);
     return current_uid;
   }
 
@@ -696,7 +670,7 @@ u32 UIDSys::GetOrInsertUIDForTitle(const u64 title_id)
   if (!file || !file->Seek(0, HLE::FS::SeekMode::End) || !file->Write(&swapped_title_id, 1) ||
       !file->Write(&swapped_uid, 1))
   {
-    ERROR_LOG(IOS_ES, "Failed to write to /sys/uid.sys");
+    ERROR_LOG_FMT(IOS_ES, "Failed to write to /sys/uid.sys");
     return 0;
   }
 
@@ -791,7 +765,7 @@ std::map<std::string, CertReader> ParseCertChain(const std::vector<u8>& chain)
       return certs;
 
     processed += cert_reader.GetBytes().size();
-    const std::string name = cert_reader.GetName();
+    std::string name = cert_reader.GetName();
     certs.emplace(std::move(name), std::move(cert_reader));
   }
   return certs;

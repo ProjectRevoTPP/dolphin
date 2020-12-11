@@ -16,6 +16,7 @@
 #include <utility>
 #include <vector>
 
+#include <fmt/format.h>
 #include <libusb.h>
 
 #include "Common/ChunkFile.h"
@@ -81,14 +82,15 @@ IPCCommandResult BluetoothReal::Open(const OpenRequest& request)
   if (!m_context.IsValid())
     return GetDefaultReply(IPC_EACCES);
 
+  m_last_open_error.clear();
   m_context.GetDeviceList([this](libusb_device* device) {
     libusb_device_descriptor device_descriptor;
     libusb_get_device_descriptor(device, &device_descriptor);
     auto config_descriptor = LibusbUtils::MakeConfigDescriptor(device);
     if (!config_descriptor)
     {
-      ERROR_LOG(IOS_WIIMOTE, "Failed to get config descriptor for device %04x:%04x",
-                device_descriptor.idVendor, device_descriptor.idProduct);
+      ERROR_LOG_FMT(IOS_WIIMOTE, "Failed to get config descriptor for device {:04x}:{:04x}",
+                    device_descriptor.idVendor, device_descriptor.idProduct);
       return true;
     }
 
@@ -103,9 +105,9 @@ IPCCommandResult BluetoothReal::Open(const OpenRequest& request)
                                          sizeof(product));
       libusb_get_string_descriptor_ascii(m_handle, device_descriptor.iSerialNumber, serial_number,
                                          sizeof(serial_number));
-      NOTICE_LOG(IOS_WIIMOTE, "Using device %04x:%04x (rev %x) for Bluetooth: %s %s %s",
-                 device_descriptor.idVendor, device_descriptor.idProduct,
-                 device_descriptor.bcdDevice, manufacturer, product, serial_number);
+      NOTICE_LOG_FMT(IOS_WIIMOTE, "Using device {:04x}:{:04x} (rev {:x}) for Bluetooth: {} {} {}",
+                     device_descriptor.idVendor, device_descriptor.idProduct,
+                     device_descriptor.bcdDevice, manufacturer, product, serial_number);
       m_is_wii_bt_module =
           device_descriptor.idVendor == 0x57e && device_descriptor.idProduct == 0x305;
       return false;
@@ -115,8 +117,20 @@ IPCCommandResult BluetoothReal::Open(const OpenRequest& request)
 
   if (m_handle == nullptr)
   {
-    PanicAlertT("Bluetooth passthrough mode is enabled, "
-                "but no usable Bluetooth USB device was found. Aborting.");
+    if (m_last_open_error.empty())
+    {
+      CriticalAlertFmtT(
+          "Could not find any usable Bluetooth USB adapter for Bluetooth Passthrough.\n\n"
+          "The emulated console will now stop.");
+    }
+    else
+    {
+      CriticalAlertFmtT(
+          "Could not find any usable Bluetooth USB adapter for Bluetooth Passthrough.\n"
+          "The following error occurred when Dolphin tried to use an adapter:\n{0}\n\n"
+          "The emulated console will now stop.",
+          m_last_open_error);
+    }
     Core::QueueHostJob(Core::Stop);
     return GetDefaultReply(IPC_ENOENT);
   }
@@ -355,7 +369,7 @@ void BluetoothReal::SendHCIResetCommand()
   const u16 payload[] = {HCI_CMD_RESET};
   memcpy(packet, payload, sizeof(payload));
   libusb_control_transfer(m_handle, REQUEST_TYPE, 0, 0, 0, packet, sizeof(packet), TIMEOUT);
-  INFO_LOG(IOS_WIIMOTE, "Sent a reset command to adapter");
+  INFO_LOG_FMT(IOS_WIIMOTE, "Sent a reset command to adapter");
 }
 
 void BluetoothReal::SendHCIDeleteLinkKeyCommand()
@@ -468,8 +482,8 @@ void BluetoothReal::FakeSyncButtonEvent(USB::V0IntrMessage& ctrl, const u8* payl
 // This causes the emulated software to perform a BT inquiry and connect to found Wiimotes.
 void BluetoothReal::FakeSyncButtonPressedEvent(USB::V0IntrMessage& ctrl)
 {
-  NOTICE_LOG(IOS_WIIMOTE, "Faking 'sync button pressed' (0x08) event packet");
-  const u8 payload[1] = {0x08};
+  NOTICE_LOG_FMT(IOS_WIIMOTE, "Faking 'sync button pressed' (0x08) event packet");
+  constexpr u8 payload[1] = {0x08};
   FakeSyncButtonEvent(ctrl, payload, sizeof(payload));
   m_sync_button_state = SyncButtonState::Ignored;
 }
@@ -477,8 +491,8 @@ void BluetoothReal::FakeSyncButtonPressedEvent(USB::V0IntrMessage& ctrl)
 // When the red sync button is held for 10 seconds, a HCI event with payload 09 is sent.
 void BluetoothReal::FakeSyncButtonHeldEvent(USB::V0IntrMessage& ctrl)
 {
-  NOTICE_LOG(IOS_WIIMOTE, "Faking 'sync button held' (0x09) event packet");
-  const u8 payload[1] = {0x09};
+  NOTICE_LOG_FMT(IOS_WIIMOTE, "Faking 'sync button held' (0x09) event packet");
+  constexpr u8 payload[1] = {0x09};
   FakeSyncButtonEvent(ctrl, payload, sizeof(payload));
   m_sync_button_state = SyncButtonState::Ignored;
 }
@@ -498,8 +512,9 @@ void BluetoothReal::LoadLinkKeys()
     std::optional<bdaddr_t> address = Common::StringToMacAddress(address_string);
     if (!address)
     {
-      ERROR_LOG(IOS_WIIMOTE, "Malformed MAC address (%s). Skipping loading of current link key.",
-                address_string.c_str());
+      ERROR_LOG_FMT(IOS_WIIMOTE,
+                    "Malformed MAC address ({}). Skipping loading of current link key.",
+                    address_string);
       continue;
     }
 
@@ -512,7 +527,7 @@ void BluetoothReal::LoadLinkKeys()
     for (size_t i = 0; i < key_string.length(); i = i + 2)
     {
       int value;
-      std::stringstream(key_string.substr(i, 2)) >> std::hex >> value;
+      std::istringstream(key_string.substr(i, 2)) >> std::hex >> value;
       key[pos++] = value;
     }
 
@@ -547,7 +562,8 @@ bool BluetoothReal::OpenDevice(libusb_device* device)
   const int ret = libusb_open(m_device, &m_handle);
   if (ret != 0)
   {
-    PanicAlertT("Failed to open Bluetooth device: %s", libusb_error_name(ret));
+    m_last_open_error =
+        Common::FmtFormatT("Failed to open Bluetooth device: {0}", libusb_error_name(ret));
     return false;
   }
 
@@ -560,15 +576,15 @@ bool BluetoothReal::OpenDevice(libusb_device* device)
     result = libusb_detach_kernel_driver(m_handle, INTERFACE);
     if (result < 0 && result != LIBUSB_ERROR_NOT_FOUND && result != LIBUSB_ERROR_NOT_SUPPORTED)
     {
-      PanicAlertT("Failed to detach kernel driver for BT passthrough: %s",
-                  libusb_error_name(result));
+      m_last_open_error = Common::FmtFormatT(
+          "Failed to detach kernel driver for BT passthrough: {0}", libusb_error_name(result));
       return false;
     }
   }
 #endif
   if (libusb_claim_interface(m_handle, INTERFACE) < 0)
   {
-    PanicAlertT("Failed to claim interface for BT passthrough");
+    m_last_open_error = Common::GetStringT("Failed to claim interface for BT passthrough");
     return false;
   }
 
@@ -584,7 +600,7 @@ void BluetoothReal::HandleCtrlTransfer(libusb_transfer* tr)
 
   if (tr->status != LIBUSB_TRANSFER_COMPLETED && tr->status != LIBUSB_TRANSFER_NO_DEVICE)
   {
-    ERROR_LOG(IOS_WIIMOTE, "libusb command transfer failed, status: 0x%02x", tr->status);
+    ERROR_LOG_FMT(IOS_WIIMOTE, "libusb command transfer failed, status: {:#04x}", tr->status);
     if (!m_showed_failed_transfer.IsSet())
     {
       Core::DisplayMessage("Failed to send a command to the Bluetooth adapter.", 10000);
@@ -611,7 +627,7 @@ void BluetoothReal::HandleBulkOrIntrTransfer(libusb_transfer* tr)
   if (tr->status != LIBUSB_TRANSFER_COMPLETED && tr->status != LIBUSB_TRANSFER_TIMED_OUT &&
       tr->status != LIBUSB_TRANSFER_NO_DEVICE)
   {
-    ERROR_LOG(IOS_WIIMOTE, "libusb transfer failed, status: 0x%02x", tr->status);
+    ERROR_LOG_FMT(IOS_WIIMOTE, "libusb transfer failed, status: {:#04x}", tr->status);
     if (!m_showed_failed_transfer.IsSet())
     {
       Core::DisplayMessage("Failed to transfer to or from to the Bluetooth adapter.", 10000);

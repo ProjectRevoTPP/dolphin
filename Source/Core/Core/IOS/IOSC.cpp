@@ -328,7 +328,7 @@ ReturnCode IOSC::VerifyPublicKeySign(const std::array<u8, 20>& sha1, Handle sign
                                              MBEDTLS_MD_SHA1, 0, sha1.data(), signature.data());
     if (ret != 0)
     {
-      WARN_LOG(IOS, "VerifyPublicKeySign: RSA verification failed (error %d)", ret);
+      WARN_LOG_FMT(IOS, "VerifyPublicKeySign: RSA verification failed (error {})", ret);
       return IOSC_FAIL_CHECKVALUE;
     }
 
@@ -420,9 +420,9 @@ static CertECC MakeBlankEccCert(const std::string& issuer, const std::string& na
 {
   CertECC cert{};
   cert.signature.type = SignatureType(Common::swap32(u32(SignatureType::ECC)));
-  std::strncpy(cert.signature.issuer, issuer.c_str(), 0x40);
+  issuer.copy(cert.signature.issuer, sizeof(cert.signature.issuer) - 1);
   cert.header.public_key_type = PublicKeyType(Common::swap32(u32(PublicKeyType::ECC)));
-  std::strncpy(cert.header.name, name.c_str(), 0x40);
+  name.copy(cert.header.name, sizeof(cert.header.name) - 1);
   cert.header.id = Common::swap32(key_id);
   cert.public_key = Common::ec::PrivToPub(private_key);
   return cert;
@@ -561,14 +561,14 @@ void IOSC::LoadEntries()
   File::IOFile file{File::GetUserPath(D_WIIROOT_IDX) + "/keys.bin", "rb"};
   if (!file)
   {
-    WARN_LOG(IOS, "keys.bin could not be found. Default values will be used.");
+    WARN_LOG_FMT(IOS, "keys.bin could not be found. Default values will be used.");
     return;
   }
 
   BootMiiKeyDump dump;
   if (!file.ReadBytes(&dump, sizeof(dump)))
   {
-    ERROR_LOG(IOS, "Failed to read from keys.bin.");
+    ERROR_LOG_FMT(IOS, "Failed to read from keys.bin.");
     return;
   }
 

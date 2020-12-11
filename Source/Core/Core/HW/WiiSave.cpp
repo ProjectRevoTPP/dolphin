@@ -11,7 +11,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cinttypes>
 #include <cstdio>
 #include <cstring>
 #include <mbedtls/md5.h>
@@ -21,6 +20,8 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+#include <fmt/format.h>
 
 #include "Common/Align.h"
 #include "Common/CommonTypes.h"
@@ -253,11 +254,12 @@ public:
     std::array<u8, 0x10> iv = s_sd_initial_iv;
     m_iosc.Decrypt(IOS::HLE::IOSC::HANDLE_SD_KEY, iv.data(), reinterpret_cast<const u8*>(&header),
                    sizeof(Header), reinterpret_cast<u8*>(&header), IOS::PID_ES);
-    u32 banner_size = header.banner_size;
+    const u32 banner_size = header.banner_size;
     if ((banner_size < FULL_BNR_MIN) || (banner_size > FULL_BNR_MAX) ||
         (((banner_size - BNR_SZ) % ICON_SZ) != 0))
     {
-      ERROR_LOG(CONSOLE, "Not a Wii save or read failure for file header size %x", banner_size);
+      ERROR_LOG_FMT(CONSOLE, "Not a Wii save or read failure for file header size {:x}",
+                    banner_size);
       return {};
     }
 
@@ -267,9 +269,9 @@ public:
     mbedtls_md5_ret(reinterpret_cast<const u8*>(&header), sizeof(Header), md5_calc.data());
     if (md5_file != md5_calc)
     {
-      ERROR_LOG(CONSOLE, "MD5 mismatch\n %016" PRIx64 "%016" PRIx64 " != %016" PRIx64 "%016" PRIx64,
-                Common::swap64(md5_file.data()), Common::swap64(md5_file.data() + 8),
-                Common::swap64(md5_calc.data()), Common::swap64(md5_calc.data() + 8));
+      ERROR_LOG_FMT(CONSOLE, "MD5 mismatch\n {:016x}{:016x} != {:016x}{:016x}",
+                    Common::swap64(md5_file.data()), Common::swap64(md5_file.data() + 8),
+                    Common::swap64(md5_calc.data()), Common::swap64(md5_calc.data() + 8));
       return {};
     }
     return header;
@@ -390,7 +392,7 @@ public:
 
     if (!WriteSignatures())
     {
-      ERROR_LOG(CORE, "WiiSave::WriteFiles: Failed to write signatures");
+      ERROR_LOG_FMT(CORE, "WiiSave::WriteFiles: Failed to write signatures");
       return false;
     }
     return true;
@@ -445,13 +447,14 @@ StoragePointer MakeDataBinStorage(IOS::HLE::IOSC* iosc, const std::string& path,
 }
 
 template <typename T>
-static bool Copy(const char* description, Storage* source, std::optional<T> (Storage::*read_fn)(),
-                 Storage* dest, bool (Storage::*write_fn)(const T&))
+static bool Copy(std::string_view description, Storage* source,
+                 std::optional<T> (Storage::*read_fn)(), Storage* dest,
+                 bool (Storage::*write_fn)(const T&))
 {
   const std::optional<T> data = (source->*read_fn)();
   if (data && (dest->*write_fn)(*data))
     return true;
-  ERROR_LOG(CORE, "WiiSave::Copy: Failed to %s %s", !data ? "read" : "write", description);
+  ERROR_LOG_FMT(CORE, "WiiSave::Copy: Failed to {} {}", !data ? "read" : "write", description);
   return false;
 }
 
@@ -469,7 +472,7 @@ bool Import(const std::string& data_bin_path, std::function<bool()> can_overwrit
   const std::optional<Header> header = data_bin->ReadHeader();
   if (!header)
   {
-    ERROR_LOG(CORE, "WiiSave::Import: Failed to read header");
+    ERROR_LOG_FMT(CORE, "WiiSave::Import: Failed to read header");
     return false;
   }
   const auto nand = MakeNandStorage(ios.GetFS().get(), header->tid);
@@ -478,22 +481,22 @@ bool Import(const std::string& data_bin_path, std::function<bool()> can_overwrit
   return Copy(data_bin.get(), nand.get());
 }
 
-static bool Export(u64 tid, const std::string& export_path, IOS::HLE::Kernel* ios)
+static bool Export(u64 tid, std::string_view export_path, IOS::HLE::Kernel* ios)
 {
-  std::string path = StringFromFormat("%s/private/wii/title/%c%c%c%c/data.bin", export_path.c_str(),
-                                      static_cast<char>(tid >> 24), static_cast<char>(tid >> 16),
-                                      static_cast<char>(tid >> 8), static_cast<char>(tid));
+  const std::string path = fmt::format("{}/private/wii/title/{}{}{}{}/data.bin", export_path,
+                                       static_cast<char>(tid >> 24), static_cast<char>(tid >> 16),
+                                       static_cast<char>(tid >> 8), static_cast<char>(tid));
   return Copy(MakeNandStorage(ios->GetFS().get(), tid).get(),
               MakeDataBinStorage(&ios->GetIOSC(), path, "w+b").get());
 }
 
-bool Export(u64 tid, const std::string& export_path)
+bool Export(u64 tid, std::string_view export_path)
 {
   IOS::HLE::Kernel ios;
   return Export(tid, export_path, &ios);
 }
 
-size_t ExportAll(const std::string& export_path)
+size_t ExportAll(std::string_view export_path)
 {
   IOS::HLE::Kernel ios;
   size_t exported_save_count = 0;

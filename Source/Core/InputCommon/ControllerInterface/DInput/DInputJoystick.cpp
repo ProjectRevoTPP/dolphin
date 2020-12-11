@@ -59,7 +59,7 @@ void InitJoystick(IDirectInput8* const idi8, HWND hwnd)
         if (FAILED(js_device->SetCooperativeLevel(GetAncestor(hwnd, GA_ROOT),
                                                   DISCL_BACKGROUND | DISCL_EXCLUSIVE)))
         {
-          WARN_LOG(
+          WARN_LOG_FMT(
               PAD,
               "DInput: Failed to acquire device exclusively. Force feedback will be unavailable.");
           // Fall back to non-exclusive mode, with no rumble
@@ -187,7 +187,7 @@ Joystick::~Joystick()
   }
   else
   {
-    ERROR_LOG(PAD, "DInputJoystick: GetDeviceInfo failed.");
+    ERROR_LOG_FMT(PAD, "DInputJoystick: GetDeviceInfo failed.");
   }
 
   DeInitForceFeedback();
@@ -310,6 +310,6 @@ ControlState Joystick::Hat::GetState() const
   if (is_centered)
     return 0;
 
-  return (abs((int)(m_hat / 4500 - m_direction * 2 + 8) % 8 - 4) > 2);
+  return (std::abs(int(m_hat / 4500 - m_direction * 2 + 8) % 8 - 4) > 2);
 }
 }  // namespace ciface::DInput

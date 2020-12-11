@@ -10,10 +10,7 @@
 #include <cstdio>
 #include <memory>
 #include <string>
-#include <tuple>
-#include <vector>
 
-#include "Common/Assert.h"
 #include "Common/Atomic.h"
 #include "Common/CommonTypes.h"
 #include "Common/GL/GLContext.h"
@@ -24,7 +21,6 @@
 #include "Common/StringUtil.h"
 
 #include "Core/Config/GraphicsSettings.h"
-#include "Core/Core.h"
 
 #include "VideoBackends/OGL/BoundingBox.h"
 #include "VideoBackends/OGL/OGLPipeline.h"
@@ -32,22 +28,16 @@
 #include "VideoBackends/OGL/OGLTexture.h"
 #include "VideoBackends/OGL/ProgramShaderCache.h"
 #include "VideoBackends/OGL/SamplerCache.h"
-#include "VideoBackends/OGL/StreamBuffer.h"
 #include "VideoBackends/OGL/VertexManager.h"
 
 #include "VideoCommon/BPFunctions.h"
 #include "VideoCommon/DriverDetails.h"
 #include "VideoCommon/FramebufferManager.h"
-#include "VideoCommon/IndexGenerator.h"
 #include "VideoCommon/OnScreenDisplay.h"
-#include "VideoCommon/PixelEngine.h"
 #include "VideoCommon/PostProcessing.h"
 #include "VideoCommon/RenderState.h"
-#include "VideoCommon/ShaderGenCommon.h"
-#include "VideoCommon/VertexShaderManager.h"
-#include "VideoCommon/VideoBackendBase.h"
+#include "VideoCommon/VideoCommon.h"
 #include "VideoCommon/VideoConfig.h"
-#include "VideoCommon/XFMemory.h"
 
 namespace OGL
 {
@@ -115,19 +105,19 @@ static void APIENTRY ErrorCallback(GLenum source, GLenum type, GLuint id, GLenum
   switch (severity)
   {
   case GL_DEBUG_SEVERITY_HIGH_ARB:
-    ERROR_LOG(HOST_GPU, "id: %x, source: %s, type: %s - %s", id, s_source, s_type, message);
+    ERROR_LOG_FMT(HOST_GPU, "id: {:x}, source: {}, type: {} - {}", id, s_source, s_type, message);
     break;
   case GL_DEBUG_SEVERITY_MEDIUM_ARB:
-    WARN_LOG(HOST_GPU, "id: %x, source: %s, type: %s - %s", id, s_source, s_type, message);
+    WARN_LOG_FMT(HOST_GPU, "id: {:x}, source: {}, type: {} - {}", id, s_source, s_type, message);
     break;
   case GL_DEBUG_SEVERITY_LOW_ARB:
-    DEBUG_LOG(HOST_GPU, "id: %x, source: %s, type: %s - %s", id, s_source, s_type, message);
+    DEBUG_LOG_FMT(HOST_GPU, "id: {:x}, source: {}, type: {} - {}", id, s_source, s_type, message);
     break;
   case GL_DEBUG_SEVERITY_NOTIFICATION:
-    DEBUG_LOG(HOST_GPU, "id: %x, source: %s, type: %s - %s", id, s_source, s_type, message);
+    DEBUG_LOG_FMT(HOST_GPU, "id: {:x}, source: {}, type: {} - {}", id, s_source, s_type, message);
     break;
   default:
-    ERROR_LOG(HOST_GPU, "id: %x, source: %s, type: %s - %s", id, s_source, s_type, message);
+    ERROR_LOG_FMT(HOST_GPU, "id: {:x}, source: {}, type: {} - {}", id, s_source, s_type, message);
     break;
   }
 }
@@ -144,28 +134,35 @@ static void APIENTRY ClearDepthf(GLfloat depthval)
 
 static void InitDriverInfo()
 {
-  std::string svendor = std::string(g_ogl_config.gl_vendor);
-  std::string srenderer = std::string(g_ogl_config.gl_renderer);
-  std::string sversion = std::string(g_ogl_config.gl_version);
+  const std::string_view svendor(g_ogl_config.gl_vendor);
+  const std::string_view srenderer(g_ogl_config.gl_renderer);
+  const std::string_view sversion(g_ogl_config.gl_version);
   DriverDetails::Vendor vendor = DriverDetails::VENDOR_UNKNOWN;
   DriverDetails::Driver driver = DriverDetails::DRIVER_UNKNOWN;
   DriverDetails::Family family = DriverDetails::Family::UNKNOWN;
   double version = 0.0;
 
   // Get the vendor first
-  if (svendor == "NVIDIA Corporation" && srenderer != "NVIDIA Tegra")
+  if (svendor == "NVIDIA Corporation")
   {
-    vendor = DriverDetails::VENDOR_NVIDIA;
+    if (srenderer != "NVIDIA Tegra")
+    {
+      vendor = DriverDetails::VENDOR_NVIDIA;
+    }
+    else
+    {
+      vendor = DriverDetails::VENDOR_TEGRA;
+    }
   }
   else if (svendor == "ATI Technologies Inc." || svendor == "Advanced Micro Devices, Inc.")
   {
     vendor = DriverDetails::VENDOR_ATI;
   }
-  else if (std::string::npos != sversion.find("Mesa"))
+  else if (sversion.find("Mesa") != std::string::npos)
   {
     vendor = DriverDetails::VENDOR_MESA;
   }
-  else if (std::string::npos != svendor.find("Intel"))
+  else if (svendor.find("Intel") != std::string::npos)
   {
     vendor = DriverDetails::VENDOR_INTEL;
   }
@@ -185,10 +182,6 @@ static void InitDriverInfo()
   else if (svendor == "Imagination Technologies")
   {
     vendor = DriverDetails::VENDOR_IMGTEC;
-  }
-  else if (svendor == "NVIDIA Corporation" && srenderer == "NVIDIA Tegra")
-  {
-    vendor = DriverDetails::VENDOR_TEGRA;
   }
   else if (svendor == "Vivante Corporation")
   {
@@ -238,8 +231,8 @@ static void InitDriverInfo()
       else if (srenderer.find("Ivybridge") != std::string::npos)
         family = DriverDetails::Family::INTEL_IVY;
     }
-    else if (std::string::npos != srenderer.find("AMD") ||
-             std::string::npos != srenderer.find("ATI"))
+    else if (srenderer.find("AMD") != std::string::npos ||
+             srenderer.find("ATI") != std::string::npos)
     {
       driver = DriverDetails::DRIVER_R600;
     }
@@ -314,7 +307,7 @@ static void InitDriverInfo()
     version = 100 * major + minor;
     if (change >= change_scale)
     {
-      ERROR_LOG(VIDEO, "Version changeID overflow - change:%d scale:%f", change, change_scale);
+      ERROR_LOG_FMT(VIDEO, "Version changeID overflow - change:{} scale:{}", change, change_scale);
     }
     else
     {
@@ -364,8 +357,8 @@ Renderer::Renderer(std::unique_ptr<GLContext> main_gl_context, float backbuffer_
     {
       // We want the ogl3 framebuffer instead of the ogl2 one for better blitting support.
       // It's also compatible with the gles3 one.
-      PanicAlert("GPU: ERROR: Need GL_ARB_framebuffer_object for multiple render targets.\n"
-                 "GPU: Does your video card support OpenGL 3.0?");
+      PanicAlertFmtT("GPU: ERROR: Need GL_ARB_framebuffer_object for multiple render targets.\n"
+                     "GPU: Does your video card support OpenGL 3.0?");
       bSuccess = false;
     }
 
@@ -373,8 +366,8 @@ Renderer::Renderer(std::unique_ptr<GLContext> main_gl_context, float backbuffer_
     {
       // This extension is used to replace lots of pointer setting function.
       // Also gles3 requires to use it.
-      PanicAlert("GPU: OGL ERROR: Need GL_ARB_vertex_array_object.\n"
-                 "GPU: Does your video card support OpenGL 3.0?");
+      PanicAlertFmtT("GPU: OGL ERROR: Need GL_ARB_vertex_array_object.\n"
+                     "GPU: Does your video card support OpenGL 3.0?");
       bSuccess = false;
     }
 
@@ -382,8 +375,8 @@ Renderer::Renderer(std::unique_ptr<GLContext> main_gl_context, float backbuffer_
     {
       // ogl3 buffer mapping for better streaming support.
       // The ogl2 one also isn't in gles3.
-      PanicAlert("GPU: OGL ERROR: Need GL_ARB_map_buffer_range.\n"
-                 "GPU: Does your video card support OpenGL 3.0?");
+      PanicAlertFmtT("GPU: OGL ERROR: Need GL_ARB_map_buffer_range.\n"
+                     "GPU: Does your video card support OpenGL 3.0?");
       bSuccess = false;
     }
 
@@ -391,13 +384,13 @@ Renderer::Renderer(std::unique_ptr<GLContext> main_gl_context, float backbuffer_
     {
       // ubo allow us to keep the current constants on shader switches
       // we also can stream them much nicer and pack into it whatever we want to
-      PanicAlert("GPU: OGL ERROR: Need GL_ARB_uniform_buffer_object.\n"
-                 "GPU: Does your video card support OpenGL 3.1?");
+      PanicAlertFmtT("GPU: OGL ERROR: Need GL_ARB_uniform_buffer_object.\n"
+                     "GPU: Does your video card support OpenGL 3.1?");
       bSuccess = false;
     }
     else if (DriverDetails::HasBug(DriverDetails::BUG_BROKEN_UBO))
     {
-      PanicAlert(
+      PanicAlertFmtT(
           "Buggy GPU driver detected.\n"
           "Please either install the closed-source GPU driver or update your Mesa 3D version.");
       bSuccess = false;
@@ -407,8 +400,8 @@ Renderer::Renderer(std::unique_ptr<GLContext> main_gl_context, float backbuffer_
     {
       // Our sampler cache uses this extension. It could easyly be workaround and it's by far the
       // highest requirement, but it seems that no driver lacks support for it.
-      PanicAlert("GPU: OGL ERROR: Need GL_ARB_sampler_objects.\n"
-                 "GPU: Does your video card support OpenGL 3.3?");
+      PanicAlertFmtT("GPU: OGL ERROR: Need GL_ARB_sampler_objects.\n"
+                     "GPU: Does your video card support OpenGL 3.3?");
       bSuccess = false;
     }
 
@@ -433,7 +426,6 @@ Renderer::Renderer(std::unique_ptr<GLContext> main_gl_context, float backbuffer_
       ((GLExtensions::Version() >= 310) || GLExtensions::Supports("GL_NV_primitive_restart"));
   g_Config.backend_info.bSupportsFragmentStoresAndAtomics =
       GLExtensions::Supports("GL_ARB_shader_storage_buffer_object");
-  g_Config.backend_info.bSupportsBBox = g_Config.backend_info.bSupportsFragmentStoresAndAtomics;
   g_Config.backend_info.bSupportsGSInstancing = GLExtensions::Supports("GL_ARB_gpu_shader5");
   g_Config.backend_info.bSupportsSSAA = GLExtensions::Supports("GL_ARB_gpu_shader5") &&
                                         GLExtensions::Supports("GL_ARB_sample_shading");
@@ -518,6 +510,10 @@ Renderer::Renderer(std::unique_ptr<GLContext> main_gl_context, float backbuffer_
     // GLES does not support logic op.
     g_Config.backend_info.bSupportsLogicOp = false;
 
+    // glReadPixels() can't be used with non-color formats. But, if we support
+    // ARB_get_texture_sub_image (unlikely, except maybe on NVIDIA), we can use that instead.
+    g_Config.backend_info.bSupportsDepthReadback = g_ogl_config.bSupportsTextureSubImage;
+
     if (GLExtensions::Supports("GL_EXT_shader_framebuffer_fetch"))
     {
       g_ogl_config.SupportedFramebufferFetch = EsFbFetchType::FbFetchExt;
@@ -592,10 +588,10 @@ Renderer::Renderer(std::unique_ptr<GLContext> main_gl_context, float backbuffer_
   {
     if (GLExtensions::Version() < 300)
     {
-      PanicAlert("GPU: OGL ERROR: Need at least GLSL 1.30\n"
-                 "GPU: Does your video card support OpenGL 3.0?\n"
-                 "GPU: Your driver supports GLSL %s",
-                 (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION));
+      PanicAlertFmtT("GPU: OGL ERROR: Need at least GLSL 1.30\n"
+                     "GPU: Does your video card support OpenGL 3.0?\n"
+                     "GPU: Your driver supports GLSL {0}",
+                     reinterpret_cast<const char*>(glGetString(GL_SHADING_LANGUAGE_VERSION)));
       bSuccess = false;
     }
     else if (GLExtensions::Version() == 300)
@@ -658,6 +654,8 @@ Renderer::Renderer(std::unique_ptr<GLContext> main_gl_context, float backbuffer_
     glEnable(GL_PROGRAM_POINT_SIZE);
   }
 
+  g_Config.backend_info.bSupportsBBox = g_Config.backend_info.bSupportsFragmentStoresAndAtomics;
+
   // Either method can do early-z tests. See PixelShaderGen for details.
   g_Config.backend_info.bSupportsEarlyZ =
       g_ogl_config.bSupportsImageLoadStore || g_ogl_config.bSupportsConservativeDepth;
@@ -702,7 +700,8 @@ Renderer::Renderer(std::unique_ptr<GLContext> main_gl_context, float backbuffer_
       glDebugMessageControlARB(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, nullptr, true);
       glDebugMessageCallbackARB(ErrorCallback, nullptr);
     }
-    if (LogManager::GetInstance()->IsEnabled(LogTypes::HOST_GPU, LogTypes::LERROR))
+    if (Common::Log::LogManager::GetInstance()->IsEnabled(Common::Log::HOST_GPU,
+                                                          Common::Log::LERROR))
     {
       glEnable(GL_DEBUG_OUTPUT);
     }
@@ -719,10 +718,11 @@ Renderer::Renderer(std::unique_ptr<GLContext> main_gl_context, float backbuffer_
     // MSAA on default framebuffer isn't working because of glBlitFramebuffer.
     // It also isn't useful as we don't render anything to the default framebuffer.
     // We also try to get a non-msaa fb, so this only happens when forced by the driver.
-    PanicAlert("MSAA on default framebuffer isn't supported.\n"
-               "Please avoid forcing Dolphin to use MSAA by the driver.\n"
-               "%d samples on default framebuffer found.",
-               samples);
+    PanicAlertFmtT(
+        "The graphics driver is forcibly enabling anti-aliasing for Dolphin. You need to "
+        "turn this off in the graphics driver's settings in order for Dolphin to work.\n\n"
+        "(MSAA with {0} samples found on default framebuffer)",
+        samples);
     bSuccess = false;
   }
 
@@ -736,33 +736,34 @@ Renderer::Renderer(std::unique_ptr<GLContext> main_gl_context, float backbuffer_
   g_Config.VerifyValidity();
   UpdateActiveConfig();
 
-  OSD::AddMessage(StringFromFormat("Video Info: %s, %s, %s", g_ogl_config.gl_vendor,
-                                   g_ogl_config.gl_renderer, g_ogl_config.gl_version),
+  OSD::AddMessage(fmt::format("Video Info: {}, {}, {}", g_ogl_config.gl_vendor,
+                              g_ogl_config.gl_renderer, g_ogl_config.gl_version),
                   5000);
 
   if (!g_ogl_config.bSupportsGLBufferStorage && !g_ogl_config.bSupportsGLPinnedMemory)
   {
-    OSD::AddMessage(StringFromFormat("Your OpenGL driver does not support %s_buffer_storage.",
-                                     m_main_gl_context->IsGLES() ? "EXT" : "ARB"),
+    OSD::AddMessage(fmt::format("Your OpenGL driver does not support {}_buffer_storage.",
+                                m_main_gl_context->IsGLES() ? "EXT" : "ARB"),
                     60000);
     OSD::AddMessage("This device's performance will be terrible.", 60000);
     OSD::AddMessage("Please ask your device vendor for an updated OpenGL driver.", 60000);
   }
 
-  WARN_LOG(VIDEO, "Missing OGL Extensions: %s%s%s%s%s%s%s%s%s%s%s%s%s%s",
-           g_ActiveConfig.backend_info.bSupportsDualSourceBlend ? "" : "DualSourceBlend ",
-           g_ActiveConfig.backend_info.bSupportsPrimitiveRestart ? "" : "PrimitiveRestart ",
-           g_ActiveConfig.backend_info.bSupportsEarlyZ ? "" : "EarlyZ ",
-           g_ogl_config.bSupportsGLPinnedMemory ? "" : "PinnedMemory ",
-           supports_glsl_cache ? "" : "ShaderCache ",
-           g_ogl_config.bSupportsGLBaseVertex ? "" : "BaseVertex ",
-           g_ogl_config.bSupportsGLBufferStorage ? "" : "BufferStorage ",
-           g_ogl_config.bSupportsGLSync ? "" : "Sync ", g_ogl_config.bSupportsMSAA ? "" : "MSAA ",
-           g_ActiveConfig.backend_info.bSupportsSSAA ? "" : "SSAA ",
-           g_ActiveConfig.backend_info.bSupportsGSInstancing ? "" : "GSInstancing ",
-           g_ActiveConfig.backend_info.bSupportsClipControl ? "" : "ClipControl ",
-           g_ogl_config.bSupportsCopySubImage ? "" : "CopyImageSubData ",
-           g_ActiveConfig.backend_info.bSupportsDepthClamp ? "" : "DepthClamp ");
+  WARN_LOG_FMT(VIDEO, "Missing OGL Extensions: {}{}{}{}{}{}{}{}{}{}{}{}{}{}",
+               g_ActiveConfig.backend_info.bSupportsDualSourceBlend ? "" : "DualSourceBlend ",
+               g_ActiveConfig.backend_info.bSupportsPrimitiveRestart ? "" : "PrimitiveRestart ",
+               g_ActiveConfig.backend_info.bSupportsEarlyZ ? "" : "EarlyZ ",
+               g_ogl_config.bSupportsGLPinnedMemory ? "" : "PinnedMemory ",
+               supports_glsl_cache ? "" : "ShaderCache ",
+               g_ogl_config.bSupportsGLBaseVertex ? "" : "BaseVertex ",
+               g_ogl_config.bSupportsGLBufferStorage ? "" : "BufferStorage ",
+               g_ogl_config.bSupportsGLSync ? "" : "Sync ",
+               g_ogl_config.bSupportsMSAA ? "" : "MSAA ",
+               g_ActiveConfig.backend_info.bSupportsSSAA ? "" : "SSAA ",
+               g_ActiveConfig.backend_info.bSupportsGSInstancing ? "" : "GSInstancing ",
+               g_ActiveConfig.backend_info.bSupportsClipControl ? "" : "ClipControl ",
+               g_ogl_config.bSupportsCopySubImage ? "" : "CopyImageSubData ",
+               g_ActiveConfig.backend_info.bSupportsDepthClamp ? "" : "DepthClamp ");
 
   // Handle VSync on/off
   if (!DriverDetails::HasBug(DriverDetails::BUG_BROKEN_VSYNC))
@@ -785,7 +786,6 @@ Renderer::Renderer(std::unique_ptr<GLContext> main_gl_context, float backbuffer_
 
   if (g_ActiveConfig.backend_info.bSupportsPrimitiveRestart)
     GLUtil::EnablePrimitiveRestart(m_main_gl_context.get());
-  IndexGenerator::Init();
 
   UpdateActiveConfig();
 }
@@ -1053,10 +1053,15 @@ void Renderer::PresentBackbuffer()
 {
   if (g_ogl_config.bSupportsDebug)
   {
-    if (LogManager::GetInstance()->IsEnabled(LogTypes::HOST_GPU, LogTypes::LERROR))
+    if (Common::Log::LogManager::GetInstance()->IsEnabled(Common::Log::HOST_GPU,
+                                                          Common::Log::LERROR))
+    {
       glEnable(GL_DEBUG_OUTPUT);
+    }
     else
+    {
       glDisable(GL_DEBUG_OUTPUT);
+    }
   }
 
   // Swap the back and front buffers, presenting the image.

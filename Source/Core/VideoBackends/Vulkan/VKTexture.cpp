@@ -87,8 +87,10 @@ std::unique_ptr<VKTexture> VKTexture::Create(const TextureConfig& tex_config)
 
   VkMemoryAllocateInfo memory_info = {
       VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO, nullptr, memory_requirements.size,
-      g_vulkan_context->GetMemoryType(memory_requirements.memoryTypeBits,
-                                      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)};
+      g_vulkan_context
+          ->GetMemoryType(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                          false)
+          .value_or(0)};
 
   VkDeviceMemory device_memory;
   res = vkAllocateMemory(g_vulkan_context->GetDevice(), &memory_info, nullptr, &device_memory);
@@ -120,7 +122,7 @@ std::unique_ptr<VKTexture> VKTexture::CreateAdopted(const TextureConfig& tex_con
                                                     VkImageViewType view_type, VkImageLayout layout)
 {
   std::unique_ptr<VKTexture> texture = std::make_unique<VKTexture>(
-      tex_config, nullptr, image, layout, ComputeImageLayout::Undefined);
+      tex_config, VkDeviceMemory(VK_NULL_HANDLE), image, layout, ComputeImageLayout::Undefined);
   if (!texture->CreateView(view_type))
     return nullptr;
 
@@ -215,7 +217,7 @@ VkFormat VKTexture::GetVkFormatForHostTextureFormat(AbstractTextureFormat format
     return VK_FORMAT_UNDEFINED;
 
   default:
-    PanicAlert("Unhandled texture format.");
+    PanicAlertFmt("Unhandled texture format.");
     return VK_FORMAT_R8G8B8A8_UNORM;
   }
 }
@@ -367,12 +369,13 @@ void VKTexture::Load(u32 level, u32 width, u32 height, u32 row_length, const u8*
     if (!stream_buffer->ReserveMemory(upload_size, upload_alignment))
     {
       // Execute the command buffer first.
-      WARN_LOG(VIDEO, "Executing command list while waiting for space in texture upload buffer");
+      WARN_LOG_FMT(VIDEO,
+                   "Executing command list while waiting for space in texture upload buffer");
       Renderer::GetInstance()->ExecuteCommandBuffer(false);
 
       // Try allocating again. This may cause a fence wait.
       if (!stream_buffer->ReserveMemory(upload_size, upload_alignment))
-        PanicAlert("Failed to allocate space in texture upload buffer");
+        PanicAlertFmt("Failed to allocate space in texture upload buffer");
     }
     // Copy to the streaming buffer.
     upload_buffer = stream_buffer->GetBuffer();
@@ -387,7 +390,7 @@ void VKTexture::Load(u32 level, u32 width, u32 height, u32 row_length, const u8*
                                         VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
     if (!temp_buffer || !temp_buffer->Map())
     {
-      PanicAlert("Failed to allocate staging texture for large texture upload.");
+      PanicAlertFmt("Failed to allocate staging texture for large texture upload.");
       return;
     }
 

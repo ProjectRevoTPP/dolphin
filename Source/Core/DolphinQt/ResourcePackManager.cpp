@@ -33,6 +33,7 @@ void ResourcePackManager::CreateWidgets()
   auto* layout = new QGridLayout;
 
   m_table_widget = new QTableWidget;
+  m_table_widget->setTabKeyNavigation(false);
 
   m_open_directory_button = new QPushButton(tr("Open Directory..."));
   m_change_button = new QPushButton(tr("Install"));
@@ -142,7 +143,7 @@ void ResourcePackManager::RepopulateTable()
 
       if (ResourcePack::IsInstalled(pack))
       {
-        item->setBackgroundColor(QColor(Qt::green));
+        item->setBackground(QColor(Qt::green));
 
         auto font = item->font();
         font.setBold(true);
@@ -193,7 +194,7 @@ void ResourcePackManager::Install()
 
   auto& item = ResourcePack::GetPacks()[GetResourcePackIndex(items[0])];
 
-  bool success = item.Install(File::GetUserPath(D_USER_IDX));
+  bool success = item.Install(File::GetUserPath(D_LOAD_IDX));
 
   if (!success)
   {
@@ -214,7 +215,7 @@ void ResourcePackManager::Uninstall()
 
   auto& item = ResourcePack::GetPacks()[GetResourcePackIndex(items[0])];
 
-  bool success = item.Uninstall(File::GetUserPath(D_USER_IDX));
+  bool success = item.Uninstall(File::GetUserPath(D_LOAD_IDX));
 
   if (!success)
   {

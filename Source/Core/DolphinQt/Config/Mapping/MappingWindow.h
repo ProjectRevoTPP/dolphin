@@ -50,6 +50,7 @@ public:
   int GetPort() const;
   ControllerEmu::EmulatedController* GetController() const;
   bool IsMappingAllDevices() const;
+  void ShowExtensionMotionTabs(bool show);
 
 signals:
   // Emitted when config has changed so widgets can update to reflect the change.
@@ -66,14 +67,18 @@ private:
   void CreateMainLayout();
   void ConnectWidgets();
 
-  void AddWidget(const QString& name, QWidget* widget);
+  QWidget* AddWidget(const QString& name, QWidget* widget);
 
   void RefreshDevices();
 
+  void OnSelectProfile(int index);
+  void OnProfileTextChanged(const QString& text);
   void OnDeleteProfilePressed();
   void OnLoadProfilePressed();
   void OnSaveProfilePressed();
   void UpdateProfileIndex();
+  void UpdateProfileButtonState();
+  void PopulateProfileSelection();
 
   void OnDefaultFieldsPressed();
   void OnClearFieldsPressed();
@@ -108,6 +113,10 @@ private:
   QPushButton* m_reset_clear;
 
   QTabWidget* m_tab_widget;
+  QWidget* m_extension_motion_input_tab;
+  QWidget* m_extension_motion_simulation_tab;
+  const QString EXTENSION_MOTION_INPUT_TAB_NAME = tr("Extension Motion Input");
+  const QString EXTENSION_MOTION_SIMULATION_TAB_NAME = tr("Extension Motion Simulation");
 
   Type m_mapping_type;
   const int m_port;

@@ -25,6 +25,7 @@
 #include "Core/ConfigManager.h"
 #include "Core/HW/AddressSpace.h"
 #include "DolphinQt/Debugger/MemoryViewWidget.h"
+#include "DolphinQt/Host.h"
 #include "DolphinQt/QtUtils/ModalMessageBox.h"
 #include "DolphinQt/Settings.h"
 
@@ -47,13 +48,14 @@ MemoryWidget::MemoryWidget(QWidget* parent) : QDockWidget(parent)
   setFloating(settings.value(QStringLiteral("memorywidget/floating")).toBool());
   m_splitter->restoreState(settings.value(QStringLiteral("codewidget/splitter")).toByteArray());
 
-  connect(&Settings::Instance(), &Settings::MemoryVisibilityChanged,
+  connect(&Settings::Instance(), &Settings::MemoryVisibilityChanged, this,
           [this](bool visible) { setHidden(!visible); });
 
-  connect(&Settings::Instance(), &Settings::DebugModeToggled,
+  connect(&Settings::Instance(), &Settings::DebugModeToggled, this,
           [this](bool enabled) { setHidden(!enabled || !Settings::Instance().IsMemoryVisible()); });
 
   connect(&Settings::Instance(), &Settings::EmulationStateChanged, this, &MemoryWidget::Update);
+  connect(Host::GetInstance(), &Host::UpdateDisasmDialog, this, &MemoryWidget::Update);
 
   LoadSettings();
 
@@ -488,12 +490,15 @@ void MemoryWidget::OnSetValue()
     const QByteArray bytes = m_data_edit->text().toUtf8();
 
     for (char c : bytes)
-      accessors->WriteU8(static_cast<u8>(c), addr++);
+      accessors->WriteU8(addr++, static_cast<u8>(c));
   }
   else
   {
     bool good_value;
-    u64 value = m_data_edit->text().toULongLong(&good_value, 16);
+    const QString text = m_data_edit->text();
+    const int length =
+        text.startsWith(QStringLiteral("0x"), Qt::CaseInsensitive) ? text.size() - 2 : text.size();
+    const u64 value = text.toULongLong(&good_value, 16);
 
     if (!good_value)
     {
@@ -501,15 +506,15 @@ void MemoryWidget::OnSetValue()
       return;
     }
 
-    if (value == static_cast<u8>(value))
+    if (length <= 2)
     {
       accessors->WriteU8(addr, static_cast<u8>(value));
     }
-    else if (value == static_cast<u16>(value))
+    else if (length <= 4)
     {
       accessors->WriteU16(addr, static_cast<u16>(value));
     }
-    else if (value == static_cast<u32>(value))
+    else if (length <= 8)
     {
       accessors->WriteU32(addr, static_cast<u32>(value));
     }

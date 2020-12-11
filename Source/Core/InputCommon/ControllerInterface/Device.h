@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -22,10 +23,17 @@ namespace ciface
 // range, used for periodic haptic effects though often ignored by devices
 // TODO: Make this configurable.
 constexpr int RUMBLE_PERIOD_MS = 10;
+
 // This needs to be at least as long as the longest rumble that might ever be played.
 // Too short and it's going to stop in the middle of a long effect.
 // Infinite values are invalid for ramp effects and probably not sensible.
 constexpr int RUMBLE_LENGTH_MS = 1000 * 10;
+
+// All inputs (other than accel/gyro) return 1.0 as their maximum value.
+// Battery inputs will almost always be mapped to the "Battery" setting which is a percentage.
+// If someone actually wants to map a battery input to a regular control they can divide by 100.
+// I think this is better than requiring multiplication by 100 for the most common usage.
+constexpr ControlState BATTERY_INPUT_MAX_VALUE = 100.0;
 
 namespace Core
 {
@@ -63,7 +71,7 @@ public:
   public:
     // Things like absolute axes/ absolute mouse position should override this to prevent
     // undesirable behavior in our mapping logic.
-    virtual bool IsDetectable() { return true; }
+    virtual bool IsDetectable() const { return true; }
 
     // Implementations should return a value from 0.0 to 1.0 across their normal range.
     // One input should be provided for each "direction". (e.g. 2 for each axis)
@@ -78,6 +86,11 @@ public:
     virtual ControlState GetState() const = 0;
 
     Input* ToInput() override { return this; }
+
+    // Overridden by CombinedInput,
+    // so hotkey logic knows Ctrl, L_Ctrl, and R_Ctrl are the same,
+    // and so input detection can return the parent name.
+    virtual bool IsChild(const Input*) const { return false; }
   };
 
   //
@@ -112,6 +125,8 @@ public:
   const std::vector<Input*>& Inputs() const { return m_inputs; }
   const std::vector<Output*>& Outputs() const { return m_outputs; }
 
+  Input* GetParentMostInput(Input* input) const;
+
   Input* FindInput(std::string_view name) const;
   Output* FindOutput(std::string_view name) const;
 
@@ -139,6 +154,8 @@ protected:
     AddInput(new FullAnalogSurface(low, high));
     AddInput(new FullAnalogSurface(high, low));
   }
+
+  void AddCombinedInput(std::string name, const std::pair<std::string, std::string>& inputs);
 
 private:
   int m_id;
@@ -178,6 +195,17 @@ public:
 class DeviceContainer
 {
 public:
+  using Clock = std::chrono::steady_clock;
+
+  struct InputDetection
+  {
+    std::shared_ptr<Device> device;
+    Device::Input* input;
+    Clock::time_point press_time;
+    std::optional<Clock::time_point> release_time;
+    ControlState smoothness;
+  };
+
   Device::Input* FindInput(std::string_view name, const Device* def_dev) const;
   Device::Output* FindOutput(std::string_view name, const Device* def_dev) const;
 
@@ -187,11 +215,13 @@ public:
 
   bool HasConnectedDevice(const DeviceQualifier& qualifier) const;
 
-  std::pair<std::shared_ptr<Device>, Device::Input*>
-  DetectInput(u32 wait_ms, const std::vector<std::string>& device_strings) const;
+  std::vector<InputDetection> DetectInput(const std::vector<std::string>& device_strings,
+                                          std::chrono::milliseconds initial_wait,
+                                          std::chrono::milliseconds confirmation_wait,
+                                          std::chrono::milliseconds maximum_wait) const;
 
 protected:
-  mutable std::mutex m_devices_mutex;
+  mutable std::recursive_mutex m_devices_mutex;
   std::vector<std::shared_ptr<Device>> m_devices;
 };
 }  // namespace Core

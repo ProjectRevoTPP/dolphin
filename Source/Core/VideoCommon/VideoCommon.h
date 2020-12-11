@@ -6,9 +6,6 @@
 
 #include "Common/CommonTypes.h"
 
-// Global flag to signal if FifoRecorder is active.
-extern bool g_bRecordFifoData;
-
 // These are accurate (disregarding AA modes).
 constexpr u32 EFB_WIDTH = 640;
 constexpr u32 EFB_HEIGHT = 528;
@@ -23,15 +20,13 @@ constexpr u32 MAX_XFB_WIDTH = 720;
 // that are next to each other in memory (TODO: handle that situation).
 constexpr u32 MAX_XFB_HEIGHT = 576;
 
-#ifdef _WIN32
-#define PRIM_LOG(...) DEBUG_LOG(VIDEO, __VA_ARGS__)
-#else
-#define PRIM_LOG(...) DEBUG_LOG(VIDEO, ##__VA_ARGS__)
-#endif
+#define PRIM_LOG(...) DEBUG_LOG_FMT(VIDEO, ##__VA_ARGS__)
 
 // warning: mapping buffer should be disabled to use this
-// #define LOG_VTX() DEBUG_LOG(VIDEO, "vtx: %f %f %f, ", ((float*)g_vertex_manager_write_ptr)[-3],
-// ((float*)g_vertex_manager_write_ptr)[-2], ((float*)g_vertex_manager_write_ptr)[-1]);
+// #define LOG_VTX() DEBUG_LOG_FMT(VIDEO, "vtx: {} {} {}, ",
+//                                 ((float*)g_vertex_manager_write_ptr)[-3],
+//                                 ((float*)g_vertex_manager_write_ptr)[-2],
+//                                 ((float*)g_vertex_manager_write_ptr)[-1]);
 
 #define LOG_VTX()
 

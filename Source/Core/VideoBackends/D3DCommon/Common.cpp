@@ -33,15 +33,15 @@ bool LoadLibraries()
 
   if (!s_dxgi_library.Open("dxgi.dll"))
   {
-    PanicAlertT("Failed to load dxgi.dll");
+    PanicAlertFmtT("Failed to load dxgi.dll");
     return false;
   }
 
   if (!s_d3dcompiler_library.Open(D3DCOMPILER_DLL_A))
   {
-    PanicAlertT("Failed to load %s. If you are using Windows 7, try installing the "
-                "KB4019990 update package.",
-                D3DCOMPILER_DLL_A);
+    PanicAlertFmtT("Failed to load {0}. If you are using Windows 7, try installing the "
+                   "KB4019990 update package.",
+                   D3DCOMPILER_DLL_A);
     s_dxgi_library.Close();
     return false;
   }
@@ -50,7 +50,7 @@ bool LoadLibraries()
   if (!s_d3dcompiler_library.GetSymbol("D3DCompile", &d3d_compile) ||
       !s_dxgi_library.GetSymbol("CreateDXGIFactory", &create_dxgi_factory))
   {
-    PanicAlertT("Failed to find one or more D3D symbols");
+    PanicAlertFmtT("Failed to find one or more D3D symbols");
     s_d3dcompiler_library.Close();
     s_dxgi_library.Close();
     return false;
@@ -72,23 +72,23 @@ void UnloadLibraries()
   s_libraries_loaded = false;
 }
 
-IDXGIFactory* CreateDXGIFactory(bool debug_device)
+Microsoft::WRL::ComPtr<IDXGIFactory> CreateDXGIFactory(bool debug_device)
 {
-  IDXGIFactory* factory;
+  Microsoft::WRL::ComPtr<IDXGIFactory> factory;
 
   // Use Win8.1 version if available.
   if (create_dxgi_factory2 &&
       SUCCEEDED(create_dxgi_factory2(debug_device ? DXGI_CREATE_FACTORY_DEBUG : 0,
-                                     IID_PPV_ARGS(&factory))))
+                                     IID_PPV_ARGS(factory.GetAddressOf()))))
   {
     return factory;
   }
 
   // Fallback to original version, without debug support.
-  HRESULT hr = create_dxgi_factory(IID_PPV_ARGS(&factory));
+  HRESULT hr = create_dxgi_factory(IID_PPV_ARGS(factory.ReleaseAndGetAddressOf()));
   if (FAILED(hr))
   {
-    PanicAlert("CreateDXGIFactory() failed with HRESULT %08X", hr);
+    PanicAlertFmt("CreateDXGIFactory() failed with HRESULT {:08X}", hr);
     return nullptr;
   }
 
@@ -98,19 +98,19 @@ IDXGIFactory* CreateDXGIFactory(bool debug_device)
 std::vector<std::string> GetAdapterNames()
 {
   Microsoft::WRL::ComPtr<IDXGIFactory> factory;
-  HRESULT hr = create_dxgi_factory(IID_PPV_ARGS(&factory));
-  if (!SUCCEEDED(hr))
+  HRESULT hr = create_dxgi_factory(IID_PPV_ARGS(factory.GetAddressOf()));
+  if (FAILED(hr))
     return {};
 
   std::vector<std::string> adapters;
-  IDXGIAdapter* adapter;
-  while (factory->EnumAdapters(static_cast<UINT>(adapters.size()), &adapter) !=
-         DXGI_ERROR_NOT_FOUND)
+  Microsoft::WRL::ComPtr<IDXGIAdapter> adapter;
+  while (factory->EnumAdapters(static_cast<UINT>(adapters.size()),
+                               adapter.ReleaseAndGetAddressOf()) != DXGI_ERROR_NOT_FOUND)
   {
     std::string name;
     DXGI_ADAPTER_DESC desc;
     if (SUCCEEDED(adapter->GetDesc(&desc)))
-      name = UTF16ToUTF8(desc.Description);
+      name = WStringToUTF8(desc.Description);
 
     adapters.push_back(std::move(name));
   }
@@ -147,7 +147,7 @@ DXGI_FORMAT GetDXGIFormatForAbstractFormat(AbstractTextureFormat format, bool ty
   case AbstractTextureFormat::D32F_S8:
     return DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS;
   default:
-    PanicAlert("Unhandled texture format.");
+    PanicAlertFmt("Unhandled texture format.");
     return DXGI_FORMAT_R8G8B8A8_UNORM;
   }
 }
@@ -180,7 +180,7 @@ DXGI_FORMAT GetSRVFormatForAbstractFormat(AbstractTextureFormat format)
   case AbstractTextureFormat::D32F_S8:
     return DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS;
   default:
-    PanicAlert("Unhandled SRV format");
+    PanicAlertFmt("Unhandled SRV format");
     return DXGI_FORMAT_UNKNOWN;
   }
 }
@@ -198,7 +198,7 @@ DXGI_FORMAT GetRTVFormatForAbstractFormat(AbstractTextureFormat format, bool int
   case AbstractTextureFormat::R32F:
     return DXGI_FORMAT_R32_FLOAT;
   default:
-    PanicAlert("Unhandled RTV format");
+    PanicAlertFmt("Unhandled RTV format");
     return DXGI_FORMAT_UNKNOWN;
   }
 }
@@ -215,7 +215,7 @@ DXGI_FORMAT GetDSVFormatForAbstractFormat(AbstractTextureFormat format)
   case AbstractTextureFormat::D32F_S8:
     return DXGI_FORMAT_D32_FLOAT_S8X24_UINT;
   default:
-    PanicAlert("Unhandled DSV format");
+    PanicAlertFmt("Unhandled DSV format");
     return DXGI_FORMAT_UNKNOWN;
   }
 }
@@ -268,53 +268,22 @@ AbstractTextureFormat GetAbstractFormatForDXGIFormat(DXGI_FORMAT format)
   }
 }
 
-void SetDebugObjectName(IUnknown* resource, const char* format, ...)
+void SetDebugObjectName(IUnknown* resource, std::string_view name)
 {
   if (!g_ActiveConfig.bEnableValidationLayer)
     return;
 
-  std::va_list ap;
-  va_start(ap, format);
-  std::string name = StringFromFormatV(format, ap);
-  va_end(ap);
-
   Microsoft::WRL::ComPtr<ID3D11DeviceChild> child11;
   Microsoft::WRL::ComPtr<ID3D12DeviceChild> child12;
-  if (SUCCEEDED(resource->QueryInterface(IID_PPV_ARGS(&child11))))
+  if (SUCCEEDED(resource->QueryInterface(IID_PPV_ARGS(child11.GetAddressOf()))))
   {
     child11->SetPrivateData(WKPDID_D3DDebugObjectName, static_cast<UINT>(name.length()),
-                            name.c_str());
+                            name.data());
   }
-  else if (SUCCEEDED(resource->QueryInterface(IID_PPV_ARGS(&child12))))
+  else if (SUCCEEDED(resource->QueryInterface(IID_PPV_ARGS(child12.GetAddressOf()))))
   {
     child12->SetPrivateData(WKPDID_D3DDebugObjectName, static_cast<UINT>(name.length()),
-                            name.c_str());
+                            name.data());
   }
-}
-
-std::string GetDebugObjectName(IUnknown* resource)
-{
-  if (!g_ActiveConfig.bEnableValidationLayer)
-    return {};
-
-  std::string name;
-  UINT size = 0;
-
-  Microsoft::WRL::ComPtr<ID3D11DeviceChild> child11;
-  Microsoft::WRL::ComPtr<ID3D12DeviceChild> child12;
-  if (SUCCEEDED(resource->QueryInterface(IID_PPV_ARGS(&child11))))
-  {
-    child11->GetPrivateData(WKPDID_D3DDebugObjectName, &size, nullptr);
-    name.resize(size);
-    child11->GetPrivateData(WKPDID_D3DDebugObjectName, &size, name.data());
-  }
-  else if (SUCCEEDED(resource->QueryInterface(IID_PPV_ARGS(&child12))))
-  {
-    child12->GetPrivateData(WKPDID_D3DDebugObjectName, &size, nullptr);
-    name.resize(size);
-    child12->GetPrivateData(WKPDID_D3DDebugObjectName, &size, name.data());
-  }
-
-  return name;
 }
 }  // namespace D3DCommon

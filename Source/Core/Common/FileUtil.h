@@ -31,6 +31,7 @@ enum
   D_MAPS_IDX,
   D_CACHE_IDX,
   D_COVERCACHE_IDX,
+  D_REDUMPCACHE_IDX,
   D_SHADERCACHE_IDX,
   D_SHADERS_IDX,
   D_STATESAVES_IDX,
@@ -53,6 +54,7 @@ enum
   D_WFSROOT_IDX,
   D_BACKUP_IDX,
   D_RESOURCEPACK_IDX,
+  D_DYNAMICINPUT_IDX,
   F_DOLPHINCONFIG_IDX,
   F_GCPADCONFIG_IDX,
   F_WIIPADCONFIG_IDX,
@@ -69,6 +71,7 @@ enum
   F_MEMORYWATCHERLOCATIONS_IDX,
   F_MEMORYWATCHERSOCKET_IDX,
   F_WIISDCARD_IDX,
+  F_DUALSHOCKUDPCLIENTCONFIG_IDX,
   NUM_PATH_INDICES
 };
 
@@ -133,12 +136,20 @@ bool CreateDir(const std::string& filename);
 // Creates the full path of fullPath returns true on success
 bool CreateFullPath(const std::string& fullPath);
 
+enum class IfAbsentBehavior
+{
+  ConsoleWarning,
+  NoConsoleWarning
+};
+
 // Deletes a given filename, return true on success
 // Doesn't supports deleting a directory
-bool Delete(const std::string& filename);
+bool Delete(const std::string& filename,
+            IfAbsentBehavior behavior = IfAbsentBehavior::ConsoleWarning);
 
 // Deletes a directory filename, returns true on success
-bool DeleteDir(const std::string& filename);
+bool DeleteDir(const std::string& filename,
+               IfAbsentBehavior behavior = IfAbsentBehavior::ConsoleWarning);
 
 // renames file srcFilename to destFilename, returns true on success
 bool Rename(const std::string& srcFilename, const std::string& destFilename);
@@ -172,7 +183,7 @@ bool SetCurrentDir(const std::string& directory);
 std::string CreateTempDir();
 
 // Get a filename that can hopefully be atomically renamed to the given path.
-std::string GetTempFilenameForAtomicWrite(const std::string& path);
+std::string GetTempFilenameForAtomicWrite(std::string path);
 
 // Gets a set user directory path
 // Don't call prior to setting the base user directory

@@ -29,7 +29,7 @@ namespace DX11
 {
 std::string VideoBackend::GetName() const
 {
-  return "D3D";
+  return NAME;
 }
 
 std::string VideoBackend::GetDisplayName() const
@@ -92,6 +92,7 @@ void VideoBackend::FillBackendInfo()
   g_Config.backend_info.bSupportsGPUTextureDecoding = true;
   g_Config.backend_info.bSupportsCopyToVram = true;
   g_Config.backend_info.bSupportsLargePoints = false;
+  g_Config.backend_info.bSupportsDepthReadback = true;
   g_Config.backend_info.bSupportsPartialDepthCopies = false;
   g_Config.backend_info.bSupportsBitfield = false;
   g_Config.backend_info.bSupportsDynamicSamplerIndexing = false;
@@ -142,7 +143,7 @@ bool VideoBackend::Initialize(const WindowSystemInfo& wsi)
   std::unique_ptr<SwapChain> swap_chain;
   if (wsi.render_surface && !(swap_chain = SwapChain::Create(wsi)))
   {
-    PanicAlertT("Failed to create D3D swap chain");
+    PanicAlertFmtT("Failed to create D3D swap chain");
     ShutdownShared();
     D3D::Destroy();
     return false;
@@ -154,8 +155,8 @@ bool VideoBackend::Initialize(const WindowSystemInfo& wsi)
   g_framebuffer_manager = std::make_unique<FramebufferManager>();
   g_texture_cache = std::make_unique<TextureCacheBase>();
   g_perf_query = std::make_unique<PerfQuery>();
-  if (!g_renderer->Initialize() || !g_vertex_manager->Initialize() ||
-      !g_shader_cache->Initialize() || !g_framebuffer_manager->Initialize() ||
+  if (!g_vertex_manager->Initialize() || !g_shader_cache->Initialize() ||
+      !g_renderer->Initialize() || !g_framebuffer_manager->Initialize() ||
       !g_texture_cache->Initialize())
   {
     Shutdown();

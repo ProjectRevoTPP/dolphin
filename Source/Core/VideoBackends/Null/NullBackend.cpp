@@ -52,6 +52,7 @@ void VideoBackend::InitBackendInfo()
   g_Config.backend_info.bSupportsBackgroundCompiling = false;
   g_Config.backend_info.bSupportsLogicOp = false;
   g_Config.backend_info.bSupportsLargePoints = false;
+  g_Config.backend_info.bSupportsDepthReadback = false;
   g_Config.backend_info.bSupportsPartialDepthCopies = false;
   g_Config.backend_info.bSupportsShaderBinaries = false;
   g_Config.backend_info.bSupportsPipelineCacheData = false;
@@ -76,7 +77,7 @@ bool VideoBackend::Initialize(const WindowSystemInfo& wsi)
       !g_renderer->Initialize() || !g_framebuffer_manager->Initialize() ||
       !g_texture_cache->Initialize())
   {
-    PanicAlert("Failed to initialize renderer classes");
+    PanicAlertFmt("Failed to initialize renderer classes");
     Shutdown();
     return false;
   }

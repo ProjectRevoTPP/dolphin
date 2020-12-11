@@ -153,6 +153,7 @@ private:
   void GenerateSymbolsFromAddress();
   void GenerateSymbolsFromSignatureDB();
   void GenerateSymbolsFromRSO();
+  void GenerateSymbolsFromRSOAuto();
   void LoadSymbolMap();
   void LoadOtherSymbolMap();
   void LoadBadSymbolMap();
@@ -174,6 +175,8 @@ private:
   void OnRecordingStatusChanged(bool recording);
   void OnReadOnlyModeChanged(bool read_only);
   void OnDebugModeToggled(bool enabled);
+
+  QString GetSignatureSelector() const;
 
   static QPointer<MenuBar> s_menu_bar;
 
@@ -230,9 +233,11 @@ private:
   // View
   QAction* m_show_code;
   QAction* m_show_registers;
+  QAction* m_show_threads;
   QAction* m_show_watch;
   QAction* m_show_breakpoints;
   QAction* m_show_memory;
+  QAction* m_show_network;
   QAction* m_show_jit;
   QMenu* m_cols_menu;
 
@@ -244,6 +249,7 @@ private:
   QAction* m_jit_interpreter_core;
   QAction* m_jit_block_linking;
   QAction* m_jit_disable_cache;
+  QAction* m_jit_disable_fastmem;
   QAction* m_jit_clear_cache;
   QAction* m_jit_log_coverage;
   QAction* m_jit_search_instruction;
@@ -259,6 +265,7 @@ private:
   QAction* m_jit_paired_off;
   QAction* m_jit_systemregisters_off;
   QAction* m_jit_branch_off;
+  QAction* m_jit_register_cache_off;
 
   bool m_game_selected = false;
 };

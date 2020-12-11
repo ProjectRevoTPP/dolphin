@@ -3,7 +3,8 @@ package org.dolphinemu.dolphinemu.services;
 import android.app.IntentService;
 import android.content.Context;
 import android.content.Intent;
-import android.support.v4.content.LocalBroadcastManager;
+
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import org.dolphinemu.dolphinemu.model.GameFile;
 import org.dolphinemu.dolphinemu.model.GameFileCache;
@@ -85,6 +86,15 @@ public final class GameFileCacheService extends IntentService
     return matchWithoutRevision;
   }
 
+  public static String[] findSecondDiscAndGetPaths(GameFile gameFile)
+  {
+    GameFile secondFile = findSecondDisc(gameFile);
+    if (secondFile == null)
+      return new String[]{gameFile.getPath()};
+    else
+      return new String[]{gameFile.getPath(), secondFile.getPath()};
+  }
+
   public static boolean hasLoadedCache()
   {
     return hasLoadedCache.get();
@@ -108,7 +118,7 @@ public final class GameFileCacheService extends IntentService
    */
   public static void startLoad(Context context)
   {
-    new AfterDirectoryInitializationRunner().run(context,
+    new AfterDirectoryInitializationRunner().run(context, false,
             () -> startService(context, ACTION_LOAD));
   }
 
@@ -119,7 +129,7 @@ public final class GameFileCacheService extends IntentService
    */
   public static void startRescan(Context context)
   {
-    new AfterDirectoryInitializationRunner().run(context,
+    new AfterDirectoryInitializationRunner().run(context, false,
             () -> startService(context, ACTION_RESCAN));
   }
 

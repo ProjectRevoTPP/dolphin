@@ -29,8 +29,7 @@ DrawsomeTablet::DrawsomeTablet() : Extension3rdParty("Drawsome", _trans("Drawsom
 
   // Touch
   groups.emplace_back(m_touch = new ControllerEmu::Triggers(_trans("Touch")));
-  m_touch->controls.emplace_back(
-      new ControllerEmu::Input(ControllerEmu::Translate, _trans("Pressure")));
+  m_touch->AddInput(ControllerEmu::Translate, _trans("Pressure"));
 }
 
 void DrawsomeTablet::Update()
@@ -91,12 +90,6 @@ void DrawsomeTablet::Reset()
 
   // Assuming calibration data is 0xff filled.
   m_reg.calibration.fill(0xff);
-}
-
-bool DrawsomeTablet::IsButtonPressed() const
-{
-  // Device has no buttons.
-  return false;
 }
 
 ControllerEmu::ControlGroup* DrawsomeTablet::GetGroup(DrawsomeTabletGroup group)

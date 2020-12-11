@@ -25,6 +25,8 @@
 #include "Core/Core.h"
 #include "Core/Debugger/RSO.h"
 #include "Core/HLE/HLE.h"
+#include "Core/HW/AddressSpace.h"
+#include "Core/HW/Memmap.h"
 #include "Core/HW/WiiSave.h"
 #include "Core/HW/Wiimote.h"
 #include "Core/IOS/ES/ES.h"
@@ -56,6 +58,13 @@
 #include "UICommon/GameFile.h"
 
 QPointer<MenuBar> MenuBar::s_menu_bar;
+
+QString MenuBar::GetSignatureSelector() const
+{
+  return QStringLiteral("%1 (*.dsy);; %2 (*.csv);; %3 (*.mega)")
+      .arg(tr("Dolphin Signature File"), tr("Dolphin Signature CSV File"),
+           tr("WiiTools Signature MEGA File"));
+}
 
 MenuBar::MenuBar(QWidget* parent) : QMenuBar(parent)
 {
@@ -127,6 +136,7 @@ void MenuBar::OnEmulationStateChanged(Core::State state)
   m_jit_interpreter_core->setEnabled(running);
   m_jit_block_linking->setEnabled(!running);
   m_jit_disable_cache->setEnabled(!running);
+  m_jit_disable_fastmem->setEnabled(!running);
   m_jit_clear_cache->setEnabled(running);
   m_jit_log_coverage->setEnabled(!running);
   m_jit_search_instruction->setEnabled(running);
@@ -135,7 +145,7 @@ void MenuBar::OnEmulationStateChanged(Core::State state)
        {m_jit_off, m_jit_loadstore_off, m_jit_loadstore_lbzx_off, m_jit_loadstore_lxz_off,
         m_jit_loadstore_lwz_off, m_jit_loadstore_floating_off, m_jit_loadstore_paired_off,
         m_jit_floatingpoint_off, m_jit_integer_off, m_jit_paired_off, m_jit_systemregisters_off,
-        m_jit_branch_off})
+        m_jit_branch_off, m_jit_register_cache_off})
   {
     action->setEnabled(running && !playing);
   }
@@ -159,9 +169,11 @@ void MenuBar::OnDebugModeToggled(bool enabled)
   // View
   m_show_code->setVisible(enabled);
   m_show_registers->setVisible(enabled);
+  m_show_threads->setVisible(enabled);
   m_show_watch->setVisible(enabled);
   m_show_breakpoints->setVisible(enabled);
   m_show_memory->setVisible(enabled);
+  m_show_network->setVisible(enabled);
   m_show_jit->setVisible(enabled);
 
   if (enabled)
@@ -192,8 +204,7 @@ void MenuBar::AddDVDBackupMenu(QMenu* file_menu)
 void MenuBar::AddFileMenu()
 {
   QMenu* file_menu = addMenu(tr("&File"));
-  m_open_action = file_menu->addAction(tr("&Open..."), this, &MenuBar::Open,
-                                       QKeySequence(Qt::CTRL + Qt::Key_O));
+  m_open_action = file_menu->addAction(tr("&Open..."), this, &MenuBar::Open, QKeySequence::Open);
 
   file_menu->addSeparator();
 
@@ -204,8 +215,8 @@ void MenuBar::AddFileMenu()
 
   file_menu->addSeparator();
 
-  m_exit_action =
-      file_menu->addAction(tr("E&xit"), this, &MenuBar::Exit, QKeySequence(Qt::ALT + Qt::Key_F4));
+  m_exit_action = file_menu->addAction(tr("E&xit"), this, &MenuBar::Exit);
+  m_exit_action->setShortcuts({QKeySequence::Quit, QKeySequence(Qt::ALT + Qt::Key_F4)});
 }
 
 void MenuBar::AddToolsMenu()
@@ -218,7 +229,7 @@ void MenuBar::AddToolsMenu()
   m_show_cheat_manager =
       tools_menu->addAction(tr("&Cheats Manager"), this, [this] { emit ShowCheatsManager(); });
 
-  connect(&Settings::Instance(), &Settings::EnableCheatsChanged, [this](bool enabled) {
+  connect(&Settings::Instance(), &Settings::EnableCheatsChanged, this, [this](bool enabled) {
     m_show_cheat_manager->setEnabled(Core::GetState() != Core::State::Uninitialized && enabled);
   });
 
@@ -256,7 +267,7 @@ void MenuBar::AddToolsMenu()
 
   m_boot_sysmenu->setEnabled(false);
 
-  connect(&Settings::Instance(), &Settings::NANDRefresh, [this] { UpdateToolsMenu(false); });
+  connect(&Settings::Instance(), &Settings::NANDRefresh, this, [this] { UpdateToolsMenu(false); });
 
   m_perform_online_update_menu = tools_menu->addMenu(tr("Perform Online System Update"));
   m_perform_online_update_for_current_region = m_perform_online_update_menu->addAction(
@@ -436,6 +447,14 @@ void MenuBar::AddViewMenu()
   connect(&Settings::Instance(), &Settings::RegistersVisibilityChanged, m_show_registers,
           &QAction::setChecked);
 
+  m_show_threads = view_menu->addAction(tr("&Threads"));
+  m_show_threads->setCheckable(true);
+  m_show_threads->setChecked(Settings::Instance().IsThreadsVisible());
+
+  connect(m_show_threads, &QAction::toggled, &Settings::Instance(), &Settings::SetThreadsVisible);
+  connect(&Settings::Instance(), &Settings::ThreadsVisibilityChanged, m_show_threads,
+          &QAction::setChecked);
+
   // i18n: This kind of "watch" is used for watching emulated memory.
   // It's not related to timekeeping devices.
   m_show_watch = view_menu->addAction(tr("&Watch"));
@@ -463,6 +482,14 @@ void MenuBar::AddViewMenu()
   connect(&Settings::Instance(), &Settings::MemoryVisibilityChanged, m_show_memory,
           &QAction::setChecked);
 
+  m_show_network = view_menu->addAction(tr("&Network"));
+  m_show_network->setCheckable(true);
+  m_show_network->setChecked(Settings::Instance().IsNetworkVisible());
+
+  connect(m_show_network, &QAction::toggled, &Settings::Instance(), &Settings::SetNetworkVisible);
+  connect(&Settings::Instance(), &Settings::NetworkVisibilityChanged, m_show_network,
+          &QAction::setChecked);
+
   m_show_jit = view_menu->addAction(tr("&JIT"));
   m_show_jit->setCheckable(true);
   m_show_jit->setChecked(Settings::Instance().IsJITVisible());
@@ -479,16 +506,22 @@ void MenuBar::AddViewMenu()
   AddShowRegionsMenu(view_menu);
 
   view_menu->addSeparator();
-  view_menu->addAction(tr("Purge Game List Cache"), this, &MenuBar::PurgeGameListCache);
+  QAction* const purge_action =
+      view_menu->addAction(tr("Purge Game List Cache"), this, &MenuBar::PurgeGameListCache);
+  purge_action->setEnabled(false);
+  connect(&Settings::Instance(), &Settings::GameListRefreshRequested, purge_action,
+          [purge_action] { purge_action->setEnabled(false); });
+  connect(&Settings::Instance(), &Settings::GameListRefreshStarted, purge_action,
+          [purge_action] { purge_action->setEnabled(true); });
   view_menu->addSeparator();
-  view_menu->addAction(tr("Search"), this, &MenuBar::ShowSearch,
-                       QKeySequence(Qt::CTRL + Qt::Key_F));
+  view_menu->addAction(tr("Search"), this, &MenuBar::ShowSearch, QKeySequence::Find);
 }
 
 void MenuBar::AddOptionsMenu()
 {
   QMenu* options_menu = addMenu(tr("&Options"));
-  options_menu->addAction(tr("Co&nfiguration"), this, &MenuBar::Configure);
+  options_menu->addAction(tr("Co&nfiguration"), this, &MenuBar::Configure,
+                          QKeySequence::Preferences);
   options_menu->addSeparator();
   options_menu->addAction(tr("&Graphics Settings"), this, &MenuBar::ConfigureGraphics);
   options_menu->addAction(tr("&Audio Settings"), this, &MenuBar::ConfigureAudio);
@@ -599,9 +632,13 @@ void MenuBar::AddListColumnsMenu(QMenu* view_menu)
       {tr("Description"), &SConfig::GetInstance().m_showDescriptionColumn},
       {tr("Maker"), &SConfig::GetInstance().m_showMakerColumn},
       {tr("File Name"), &SConfig::GetInstance().m_showFileNameColumn},
+      {tr("File Path"), &SConfig::GetInstance().m_showFilePathColumn},
       {tr("Game ID"), &SConfig::GetInstance().m_showIDColumn},
       {tr("Region"), &SConfig::GetInstance().m_showRegionColumn},
       {tr("File Size"), &SConfig::GetInstance().m_showSizeColumn},
+      {tr("File Format"), &SConfig::GetInstance().m_showFileFormatColumn},
+      {tr("Block Size"), &SConfig::GetInstance().m_showBlockSizeColumn},
+      {tr("Compression"), &SConfig::GetInstance().m_showCompressionColumn},
       {tr("Tags"), &SConfig::GetInstance().m_showTagsColumn}};
 
   QActionGroup* column_group = new QActionGroup(this);
@@ -664,20 +701,29 @@ void MenuBar::AddShowRegionsMenu(QMenu* view_menu)
       {tr("Show World"), &SConfig::GetInstance().m_ListWorld},
       {tr("Show Unknown"), &SConfig::GetInstance().m_ListUnknown}};
 
-  QActionGroup* region_group = new QActionGroup(this);
-  QMenu* region_menu = view_menu->addMenu(tr("Show Regions"));
-  region_group->setExclusive(false);
+  QMenu* const region_menu = view_menu->addMenu(tr("Show Regions"));
+  const QAction* const show_all_regions = region_menu->addAction(tr("Show All"));
+  const QAction* const hide_all_regions = region_menu->addAction(tr("Hide All"));
+  region_menu->addSeparator();
 
   for (const auto& key : region_map.keys())
   {
-    bool* config = region_map[key];
-    QAction* action = region_group->addAction(region_menu->addAction(key));
-    action->setCheckable(true);
-    action->setChecked(*config);
-    connect(action, &QAction::toggled, [this, config, key](bool value) {
-      *config = value;
-      emit GameListRegionVisibilityToggled(key, value);
-    });
+    bool* const config = region_map[key];
+    QAction* const menu_item = region_menu->addAction(key);
+    menu_item->setCheckable(true);
+    menu_item->setChecked(*config);
+
+    const auto set_visibility = [this, config, key, menu_item](bool visibility) {
+      menu_item->setChecked(visibility);
+      *config = visibility;
+      emit GameListRegionVisibilityToggled(key, visibility);
+    };
+    const auto set_visible = std::bind(set_visibility, true);
+    const auto set_hidden = std::bind(set_visibility, false);
+
+    connect(menu_item, &QAction::toggled, set_visibility);
+    connect(show_all_regions, &QAction::triggered, menu_item, set_visible);
+    connect(hide_all_regions, &QAction::triggered, menu_item, set_hidden);
   }
 }
 
@@ -780,6 +826,14 @@ void MenuBar::AddJITMenu()
   m_jit_disable_cache->setChecked(SConfig::GetInstance().bJITNoBlockCache);
   connect(m_jit_disable_cache, &QAction::toggled, [this](bool enabled) {
     SConfig::GetInstance().bJITNoBlockCache = enabled;
+    ClearCache();
+  });
+
+  m_jit_disable_fastmem = m_jit->addAction(tr("Disable Fastmem"));
+  m_jit_disable_fastmem->setCheckable(true);
+  m_jit_disable_fastmem->setChecked(!SConfig::GetInstance().bFastmem);
+  connect(m_jit_disable_fastmem, &QAction::toggled, [this](bool enabled) {
+    SConfig::GetInstance().bFastmem = !enabled;
     ClearCache();
   });
 
@@ -887,6 +941,14 @@ void MenuBar::AddJITMenu()
   m_jit_branch_off->setChecked(SConfig::GetInstance().bJITBranchOff);
   connect(m_jit_branch_off, &QAction::toggled, [this](bool enabled) {
     SConfig::GetInstance().bJITBranchOff = enabled;
+    ClearCache();
+  });
+
+  m_jit_register_cache_off = m_jit->addAction(tr("JIT Register Cache Off"));
+  m_jit_register_cache_off->setCheckable(true);
+  m_jit_register_cache_off->setChecked(SConfig::GetInstance().bJITRegisterCacheOff);
+  connect(m_jit_register_cache_off, &QAction::toggled, [this](bool enabled) {
+    SConfig::GetInstance().bJITRegisterCacheOff = enabled;
     ClearCache();
   });
 }
@@ -1153,13 +1215,15 @@ void MenuBar::ClearSymbols()
 
 void MenuBar::GenerateSymbolsFromAddress()
 {
-  PPCAnalyst::FindFunctions(0x80000000, 0x81800000, &g_symbolDB);
+  PPCAnalyst::FindFunctions(Memory::MEM1_BASE_ADDR,
+                            Memory::MEM1_BASE_ADDR + Memory::GetRamSizeReal(), &g_symbolDB);
   emit NotifySymbolsUpdated();
 }
 
 void MenuBar::GenerateSymbolsFromSignatureDB()
 {
-  PPCAnalyst::FindFunctions(0x80000000, 0x81800000, &g_symbolDB);
+  PPCAnalyst::FindFunctions(Memory::MEM1_BASE_ADDR,
+                            Memory::MEM1_BASE_ADDR + Memory::GetRamSizeReal(), &g_symbolDB);
   SignatureDB db(SignatureDB::HandlerType::DSY);
   if (db.Load(File::GetSysDirectory() + TOTALDB))
   {
@@ -1181,6 +1245,12 @@ void MenuBar::GenerateSymbolsFromSignatureDB()
 
 void MenuBar::GenerateSymbolsFromRSO()
 {
+  // i18n: RSO refers to a proprietary format for shared objects (like DLL files).
+  const int ret =
+      ModalMessageBox::question(this, tr("RSO auto-detection"), tr("Auto-detect RSO modules?"));
+  if (ret == QMessageBox::Yes)
+    return GenerateSymbolsFromRSOAuto();
+
   QString text = QInputDialog::getText(this, tr("Input"), tr("Enter the RSO module address:"));
   bool good;
   uint address = text.toUInt(&good, 16);
@@ -1203,6 +1273,79 @@ void MenuBar::GenerateSymbolsFromRSO()
   }
 }
 
+void MenuBar::GenerateSymbolsFromRSOAuto()
+{
+  constexpr std::array<std::string_view, 2> search_for = {".elf", ".plf"};
+  const AddressSpace::Accessors* accessors =
+      AddressSpace::GetAccessors(AddressSpace::Type::Effective);
+  std::vector<std::pair<u32, std::string>> matches;
+
+  // Find filepath to elf/plf commonly used by RSO modules
+  for (const auto& str : search_for)
+  {
+    u32 next = 0;
+    while (true)
+    {
+      auto found_addr =
+          accessors->Search(next, reinterpret_cast<const u8*>(str.data()), str.size() + 1, true);
+
+      if (!found_addr.has_value())
+        break;
+      next = *found_addr + 1;
+
+      // Get the beginning of the string
+      found_addr = accessors->Search(*found_addr, reinterpret_cast<const u8*>(""), 1, false);
+      if (!found_addr.has_value())
+        continue;
+
+      // Get the string reference
+      const u32 ref_addr = *found_addr + 1;
+      const std::array<u8, 4> ref = {static_cast<u8>(ref_addr >> 24),
+                                     static_cast<u8>(ref_addr >> 16),
+                                     static_cast<u8>(ref_addr >> 8), static_cast<u8>(ref_addr)};
+      found_addr = accessors->Search(ref_addr, ref.data(), ref.size(), false);
+      if (!found_addr.has_value() || *found_addr < 16)
+        continue;
+
+      // Go to the beginning of the RSO header
+      matches.emplace_back(*found_addr - 16, PowerPC::HostGetString(ref_addr, 128));
+    }
+  }
+
+  QStringList items;
+  for (const auto& match : matches)
+  {
+    const QString item = QLatin1String("%1 %2");
+
+    items << item.arg(QString::number(match.first, 16), QString::fromStdString(match.second));
+  }
+
+  if (items.empty())
+  {
+    ModalMessageBox::warning(this, tr("Error"), tr("Unable to auto-detect RSO module"));
+    return;
+  }
+
+  bool ok;
+  const QString item = QInputDialog::getItem(
+      this, tr("Input"), tr("Select the RSO module address:"), items, 0, false, &ok);
+
+  if (!ok)
+    return;
+
+  RSOChainView rso_chain;
+  const u32 address = item.mid(0, item.indexOf(QLatin1Char(' '))).toUInt(nullptr, 16);
+  if (rso_chain.Load(address))
+  {
+    rso_chain.Apply(&g_symbolDB);
+    emit NotifySymbolsUpdated();
+  }
+  else
+  {
+    ModalMessageBox::warning(this, tr("Error"), tr("Failed to load RSO module at %1").arg(address));
+  }
+}
+
 void MenuBar::LoadSymbolMap()
 {
   std::string existing_map_file, writable_map_file;
@@ -1211,7 +1354,8 @@ void MenuBar::LoadSymbolMap()
   if (!map_exists)
   {
     g_symbolDB.Clear();
-    PPCAnalyst::FindFunctions(0x81300000, 0x81800000, &g_symbolDB);
+    PPCAnalyst::FindFunctions(Memory::MEM1_BASE_ADDR + 0x1300000,
+                              Memory::MEM1_BASE_ADDR + Memory::GetRamSizeReal(), &g_symbolDB);
     SignatureDB db(SignatureDB::HandlerType::DSY);
     if (db.Load(File::GetSysDirectory() + TOTALDB))
       db.Apply(&g_symbolDB);
@@ -1330,8 +1474,8 @@ void MenuBar::CreateSignatureFile()
   const QString text = QInputDialog::getText(
       this, tr("Input"), tr("Only export symbols with prefix:\n(Blank for all symbols)"));
 
-  const QString file = QFileDialog::getSaveFileName(
-      this, tr("Save signature file"), QDir::homePath(), tr("Function signature file (*.dsy)"));
+  const QString file = QFileDialog::getSaveFileName(this, tr("Save signature file"),
+                                                    QDir::homePath(), GetSignatureSelector());
   if (file.isEmpty())
     return;
 
@@ -1354,8 +1498,8 @@ void MenuBar::AppendSignatureFile()
   const QString text = QInputDialog::getText(
       this, tr("Input"), tr("Only append symbols with prefix:\n(Blank for all symbols)"));
 
-  const QString file = QFileDialog::getSaveFileName(
-      this, tr("Append signature to"), QDir::homePath(), tr("Function signature file (*.dsy)"));
+  const QString file = QFileDialog::getSaveFileName(this, tr("Append signature to"),
+                                                    QDir::homePath(), GetSignatureSelector());
   if (file.isEmpty())
     return;
 
@@ -1377,8 +1521,8 @@ void MenuBar::AppendSignatureFile()
 
 void MenuBar::ApplySignatureFile()
 {
-  const QString file = QFileDialog::getOpenFileName(
-      this, tr("Apply signature file"), QDir::homePath(), tr("Function signature file (*.dsy)"));
+  const QString file = QFileDialog::getOpenFileName(this, tr("Apply signature file"),
+                                                    QDir::homePath(), GetSignatureSelector());
 
   if (file.isEmpty())
     return;
@@ -1394,21 +1538,18 @@ void MenuBar::ApplySignatureFile()
 
 void MenuBar::CombineSignatureFiles()
 {
-  const QString priorityFile =
-      QFileDialog::getOpenFileName(this, tr("Choose priority input file"), QDir::homePath(),
-                                   tr("Function signature file (*.dsy)"));
+  const QString priorityFile = QFileDialog::getOpenFileName(
+      this, tr("Choose priority input file"), QDir::homePath(), GetSignatureSelector());
   if (priorityFile.isEmpty())
     return;
 
-  const QString secondaryFile =
-      QFileDialog::getOpenFileName(this, tr("Choose secondary input file"), QDir::homePath(),
-                                   tr("Function signature file (*.dsy)"));
+  const QString secondaryFile = QFileDialog::getOpenFileName(
+      this, tr("Choose secondary input file"), QDir::homePath(), GetSignatureSelector());
   if (secondaryFile.isEmpty())
     return;
 
-  const QString saveFile =
-      QFileDialog::getSaveFileName(this, tr("Save combined output file as"), QDir::homePath(),
-                                   tr("Function signature file (*.dsy)"));
+  const QString saveFile = QFileDialog::getSaveFileName(this, tr("Save combined output file as"),
+                                                        QDir::homePath(), GetSignatureSelector());
   if (saveFile.isEmpty())
     return;
 
@@ -1453,16 +1594,17 @@ void MenuBar::SearchInstruction()
     return;
 
   bool found = false;
-  for (u32 addr = 0x80000000; addr < 0x81800000; addr += 4)
+  for (u32 addr = Memory::MEM1_BASE_ADDR; addr < Memory::MEM1_BASE_ADDR + Memory::GetRamSizeReal();
+       addr += 4)
   {
     auto ins_name =
         QString::fromStdString(PPCTables::GetInstructionName(PowerPC::HostRead_U32(addr)));
     if (op == ins_name)
     {
-      NOTICE_LOG(POWERPC, "Found %s at %08x", op.toStdString().c_str(), addr);
+      NOTICE_LOG_FMT(POWERPC, "Found {} at {:08x}", op.toStdString(), addr);
       found = true;
     }
   }
   if (!found)
-    NOTICE_LOG(POWERPC, "Opcode %s not found", op.toStdString().c_str());
+    NOTICE_LOG_FMT(POWERPC, "Opcode {} not found", op.toStdString());
 }

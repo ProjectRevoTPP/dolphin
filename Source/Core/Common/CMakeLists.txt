@@ -18,7 +18,6 @@ add_library(common
   CommonFuncs.h
   CommonPaths.h
   CommonTypes.h
-  Compiler.h
   Config/Config.cpp
   Config/Config.h
   Config/ConfigInfo.cpp
@@ -35,6 +34,7 @@ add_library(common
   Crypto/ec.h
   Debug/MemoryPatches.cpp
   Debug/MemoryPatches.h
+  Debug/Threads.h
   Debug/Watches.cpp
   Debug/Watches.h
   DebugInterface.h
@@ -53,6 +53,7 @@ add_library(common
   Flag.h
   FloatUtils.cpp
   FloatUtils.h
+  FormatUtil.h
   FPURoundMode.h
   GekkoDisassembler.cpp
   GekkoDisassembler.h
@@ -64,6 +65,7 @@ add_library(common
   Image.h
   IniFile.cpp
   IniFile.h
+  Inline.h
   JitRegister.cpp
   JitRegister.h
   Lazy.h
@@ -82,6 +84,7 @@ add_library(common
   MemArena.h
   MemoryUtil.cpp
   MemoryUtil.h
+  MinizipUtil.h
   MsgHandler.cpp
   MsgHandler.h
   NandPaths.cpp
@@ -134,6 +137,7 @@ PUBLIC
   enet
   fmt::fmt
   ${MBEDTLS_LIBRARIES}
+  minizip
 
 PRIVATE
   ${CURL_LIBRARIES}
@@ -154,8 +158,15 @@ elseif(WIN32)
   PRIVATE
     kernel32.lib
     shlwapi.lib
-    opengl32.lib
     winmm.lib
+  )
+  if (_M_X86_64)
+	  target_link_libraries(common PRIVATE opengl32.lib)
+  endif()
+elseif (ANDROID)
+  target_link_libraries(common
+  PRIVATE
+    androidcommon
   )
 endif()
 

@@ -16,6 +16,7 @@
 #include "Core/HW/Memmap.h"
 #include "Core/HW/SystemTimers.h"
 #include "Core/IOS/FS/FileSystem.h"
+#include "Core/IOS/Uids.h"
 
 namespace IOS::HLE::Device
 {
@@ -37,6 +38,11 @@ constexpr size_t CLUSTER_DATA_SIZE = 0x4000;
 
 FS::FS(Kernel& ios, const std::string& device_name) : Device(ios, device_name)
 {
+  if (ios.GetFS()->Delete(PID_KERNEL, PID_KERNEL, "/tmp") == ResultCode::Success)
+  {
+    ios.GetFS()->CreateDirectory(PID_KERNEL, PID_KERNEL, "/tmp", 0,
+                                 {Mode::ReadWrite, Mode::ReadWrite, Mode::ReadWrite});
+  }
 }
 
 void FS::DoState(PointerWrap& p)
@@ -51,8 +57,10 @@ template <typename... Args>
 static void LogResult(ResultCode code, std::string_view format, Args&&... args)
 {
   const std::string command = fmt::format(format, std::forward<Args>(args)...);
-  GENERIC_LOG(LogTypes::IOS_FS, (code == ResultCode::Success ? LogTypes::LINFO : LogTypes::LERROR),
-              "%s: result %d", command.c_str(), ConvertResult(code));
+  const auto type = code == ResultCode::Success ? Common::Log::LINFO : Common::Log::LERROR;
+
+  GENERIC_LOG_FMT(Common::Log::IOS_FS, type, "Command: {}: Result {}", command,
+                  ConvertResult(code));
 }
 
 template <typename T, typename... Args>
@@ -537,7 +545,8 @@ IPCCommandResult FS::SetFileVersionControl(const Handle& handle, const IOCtlRequ
     return GetFSReply(ConvertResult(params.Error()));
 
   // FS_SetFileVersionControl(ctx->uid, params->path, params->attribute)
-  ERROR_LOG(IOS_FS, "SetFileVersionControl(%s, 0x%x): Stubbed", params->path, params->attribute);
+  ERROR_LOG_FMT(IOS_FS, "SetFileVersionControl({}, {:#x}): Stubbed", params->path,
+                params->attribute);
   return GetFSReply(IPC_SUCCESS);
 }
 
@@ -579,7 +588,7 @@ IPCCommandResult FS::GetUsage(const Handle& handle, const IOCtlVRequest& request
 
 IPCCommandResult FS::Shutdown(const Handle& handle, const IOCtlRequest& request)
 {
-  INFO_LOG(IOS_FS, "Shutdown");
+  INFO_LOG_FMT(IOS_FS, "Shutdown");
   return GetFSReply(IPC_SUCCESS);
 }
 }  // namespace IOS::HLE::Device
