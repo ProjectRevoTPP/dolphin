@@ -25,6 +25,7 @@
 #include "Core/Movie.h"
 #include "Core/NetPlayClient.h"
 
+#include "Core/DolphinWatch.h"
 #include "Core/HW/WiimoteCommon/WiimoteConstants.h"
 #include "Core/HW/WiimoteCommon/WiimoteHid.h"
 #include "Core/HW/WiimoteEmu/Extension/Classic.h"
@@ -477,12 +478,6 @@ void Wiimote::SendDataReport()
 {
   Movie::SetPolledDevice();
 
-  if (m_reporting_hijacked)
-  {
-    // someone else (DolphinWatch) has taken control for now
-    return;
-  }
-
   if (InputReportID::ReportDisabled == m_reporting_mode)
   {
     // The wiimote is in this disabled after an extension change.
@@ -577,6 +572,8 @@ void Wiimote::SendDataReport()
     }
 
     Movie::CallWiiInputManip(rpt_builder, m_index, m_active_extension, GetExtensionEncryptionKey());
+    DolphinWatch::PerformWiiInputManip(rpt_builder, m_index, m_active_extension,
+                                       GetExtensionEncryptionKey());
   }
 
   if (NetPlay::IsNetPlayRunning())
@@ -608,14 +605,6 @@ bool Wiimote::IsButtonPressed()
   m_dpad->GetState(&buttons, dpad_bitmasks);
 
   return buttons != 0;
-}
-
-void Wiimote::SetReportingHijacked(bool b) {
-  m_reporting_hijacked = b;
-}
-
-u16 Wiimote::GetReportingChannel() {
-	return m_reporting_channel;
 }
 
 void Wiimote::LoadDefaults(const ControllerInterface& ciface)

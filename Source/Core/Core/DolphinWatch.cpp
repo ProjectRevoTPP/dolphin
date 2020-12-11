@@ -32,7 +32,7 @@ namespace DolphinWatch {
 	static std::atomic<bool> running;
 	static std::mutex client_mtx;
 
-	static int hijacksWii[NUM_WIIMOTES];
+	static std::tuple<int, u16> hijacksWii[NUM_WIIMOTES];
 	static int hijacksGC[NUM_GCPADS];
 
   static std::locale locale = std::locale::classic();
@@ -45,60 +45,18 @@ namespace DolphinWatch {
 		return ((GCPad*)Pad::GetConfig()->GetController(i_pad));
 	}
 
-	void SendButtonsWii(int i_wiimote, u16 _buttons) {
-
-		if (!Core::IsRunning()) {
-			WARN_LOG(DOLPHINWATCH, "Trying to send wii button presses, but Core is not running.");
-			return;
-		}
-
-		WiimoteEmu::Wiimote* wiimote = GetWiimote(i_wiimote);
-
-		// disable reports from actual wiimote for a while, aka hijack for a while
-    wiimote->SetReportingHijacked(true);
-		hijacksWii[i_wiimote] = HIJACK_TIMEOUT;
-
-		u8 data[23];
-		memset(data, 0, sizeof(data));
-
-		data[0] = 0xA1; // input (wiimote -> wii)
-		data[1] = 0x37; // mode: Core Buttons and Accelerometer with 16 Extension Bytes
-			            // because just core buttons does not work for some reason.
-    ((WiimoteCommon::ButtonData*)(data + 2))->hex |= _buttons;
-
-		// Only filling in button data breaks button inputs with the wii-cursor being active somehow
-
-		// Fill accelerometer with stable position
-		data[4] = 0x80; // neutral
-		data[5] = 0x80; // neutral
-		data[6] = 0x9a; // gravity
-
-		// Fill the rest with some actual data I grabbed from the emulated wiimote.
-
-		// 10 IR bytes, these encode the positions 534/291, 634/291, 524/291, 644/291 in a 1024x768 resolution.
-		// which pretty much means: point roughly at the middle.
-		// see http://wiibrew.org/wiki/Wiimote#Basic_Mode
-		unsigned char stuff[16] = { 0x16, 0x23, 0x66, 0x7a, 0x23, 0x0c, 0x23, 0x66, 0x84, 0x23,
-		// 6 extension bytes. The numbers, what do they mean? Does this break on other machines?
-			0x0c, 0x4c, 0x1a, 0xfb, 0xe6, 0x43 };
-		memcpy(data + 7, stuff, 16);
-
-		std::stringstream ss;
-    ss.imbue(locale);
-		ss << "Sending wii buttons. wiimote: " << i_wiimote << ", buttons: 0x" << std::hex << _buttons;
-		ss << ", IR: 0x" << std::hex;
-		for (int i = 0; i < 10; i++) {
-			ss << ((int)stuff[i]);
-		}
-		ss << ", extension: 0x" << std::hex;
-		for (int i = 10; i < 16; i++) {
-			ss << ((int)stuff[i]);
-		}
-		DEBUG_LOG(DOLPHINWATCH, "%s", ss.str().c_str());
-
-		Core::Callback_WiimoteInterruptChannel(i_wiimote, wiimote->GetReportingChannel(), data, 23);
-
-	}
+  void PerformWiiInputManip(WiimoteCommon::DataReportBuilder& rpt, int controller_id, int ext,
+                            const WiimoteEmu::EncryptionKey& key)
+  {
+    int timeout = std::get<0>(hijacksWii[controller_id]);
+    if (timeout > 0)
+    {
+      WiimoteCommon::DataReportBuilder::CoreData core;
+      rpt.GetCoreData(&core);
+      core.hex = std::get<1>(hijacksWii[controller_id]);
+      rpt.SetCoreData(core);
+    }
+  }
 
 	void SendButtonsGC(int i_pad, u16 _buttons, float stickX, float stickY, float substickX, float substickY) {
 		if (!Core::IsRunning()) {
@@ -134,11 +92,11 @@ namespace DolphinWatch {
 			return;
 		}
 		for (int i = 0; i < NUM_WIIMOTES; ++i) {
-			if (hijacksWii[i] <= 0) continue;
-			hijacksWii[i] -= WATCH_TIMEOUT;
-			if (hijacksWii[i] <= 0) {
-				hijacksWii[i] = 0;
-				GetWiimote(i)->SetReportingHijacked(false);
+			if (std::get<0>(hijacksWii[i]) <= 0) continue;
+      std::get<0>(hijacksWii[i]) -= WATCH_TIMEOUT;
+      if (std::get<0>(hijacksWii[i]) <= 0)
+      {
+        std::get<0>(hijacksWii[i]) = 0;
 			}
 		}
 		for (int i = 0; i < NUM_GCPADS; ++i) {
@@ -430,8 +388,7 @@ namespace DolphinWatch {
 				return;
 			}
 
-			SendButtonsWii(i_wiimote, states);
-
+      hijacksWii[i_wiimote] = std::make_tuple(HIJACK_TIMEOUT, states);
 		}
 		else if (cmd == "BUTTONSTATES_GC") {
 

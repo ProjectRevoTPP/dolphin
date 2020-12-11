@@ -132,9 +132,6 @@ public:
 
   void Reset();
 
-  void SetReportingHijacked(bool b);
-  u16 GetReportingChannel();
-
   void DoState(PointerWrap& p);
 
   // Active extension number is exposed for TAS.
@@ -281,7 +278,6 @@ private:
 
   WiimoteCommon::InputReportID m_reporting_mode;
   bool m_reporting_continuous;
-  bool m_reporting_hijacked;
 
   bool m_speaker_mute;
 
