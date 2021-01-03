@@ -4,7 +4,7 @@ This is the dolphinWatch fork. If you want the normal readme go look at https://
 
 DolphinWatch is a fork of the [Dolphin Wii and Gamecube Emulator](http://dolphin-emu.org) that allows for programatically control of Dolphin via a TCP socket connection. It was made for [TwitchPlaysPokemon](https://www.twitch.tv/twitchplayspokemon) to be able to automate Pokémon Battle Revolution matches. It originated [here](https://redd.it/3ithlh).
 
-Communication happens through text-based commands over said socket connection. Execution of commands is asynchronous to the emulation, and they get polled roughly 20 times per second. Frame-perfect control is therefore impossible with DolphinWatch. An integrated scripting layer, like the integrated LUA-scripting known to many handheld emulators like VBA, would be suitable for frame-perfect control. But sadly Dolphin does not have such functionality (yet, or I didn't find it).
+Communication happens through text-based commands over said socket connection. Execution of commands is asynchronous to the emulation, and they get polled roughly 20 times per second. Frame-perfect control is therefore impossible with DolphinWatch. An integrated scripting layer, like the integrated LUA-scripting known to many handheld emulators like VBA, would be suitable for frame-perfect control. Some WIP forks for [Lua](https://github.com/dolphin-emu/dolphin/pull/9205)- and [Python](https://github.com/dolphin-emu/dolphin/pull/7064)-based scripting exist and might fit some usecases better.
 
 ## Building
 
